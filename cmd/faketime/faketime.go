@@ -21,7 +21,7 @@ func (*fakeTime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if r.URL.Path != "/.well-known/TrueTime" {
+	if r.URL.Path != "/.well-known/truetime/now" {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -32,6 +32,7 @@ func (*fakeTime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Add("Consistent-Range-Earliest", fmt.Sprintf("%d", earliest))
 	h.Add("Consistent-Range-Latest", fmt.Sprintf("%d", latest))
+	// TODO: signature
 }
 
 func main() {

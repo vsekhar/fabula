@@ -10,17 +10,12 @@ import (
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/vsekhar/COMMIT"
 )
 
 var port = flag.Int("port", 8080, "port to listen on (default 8080)")
 var jitterMs = flag.Float64("jitter", 10.0, "stddev of timestamp range in milliseconds (default 10.0)")
-
-const (
-	earliestHeader     = "Consistent-Earliest"
-	latestHeader       = "Consistent-Latest"
-	epsilonDebugHeader = "x-Consistent-Epsilon"
-	timestampHeader    = "Consistent-Timestamp"
-)
 
 type interval struct {
 	earliest, latest int64
@@ -55,9 +50,9 @@ func handleNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	earliest, latest, epsilon := ttNow()
-	w.Header().Add(earliestHeader, fmt.Sprintf("%d", earliest.UnixNano()))
-	w.Header().Add(latestHeader, fmt.Sprintf("%d", latest.UnixNano()))
-	w.Header().Add(epsilonDebugHeader, fmt.Sprintf("%d", epsilon.Nanoseconds()))
+	w.Header().Add(COMMIT.EarliestHeader, fmt.Sprintf("%d", earliest.UnixNano()))
+	w.Header().Add(COMMIT.LatestHeader, fmt.Sprintf("%d", latest.UnixNano()))
+	w.Header().Add(COMMIT.EpsilonDebugHeader, fmt.Sprintf("%d", epsilon.Nanoseconds()))
 	// TODO: signature
 }
 
@@ -67,8 +62,8 @@ func handleCommitWait(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, e := wait()
-	w.Header().Add(epsilonDebugHeader, fmt.Sprintf("%d", e.Nanoseconds()))
-	w.Header().Add(timestampHeader, fmt.Sprintf("%d", t.UnixNano()))
+	w.Header().Add(COMMIT.EpsilonDebugHeader, fmt.Sprintf("%d", e.Nanoseconds()))
+	w.Header().Add(COMMIT.TimestampHeader, fmt.Sprintf("%d", t.UnixNano()))
 	// TODO: signature
 }
 

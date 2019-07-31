@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"net/http"
 	"time"
@@ -14,26 +15,38 @@ import (
 var port = flag.Int("port", 8080, "port to listen on (default 8080)")
 var jitterMs = flag.Float64("jitter", 10.0, "stddev of timestamp range in milliseconds (default 10.0)")
 
+const (
+	earliestHeader     = "Consistent-Earliest"
+	latestHeader       = "Consistent-Latest"
+	epsilonDebugHeader = "x-Consistent-Epsilon"
+	timestampHeader    = "Consistent-Timestamp"
+)
+
 type interval struct {
 	earliest, latest int64
 }
 
-// epislon returns a random duration drawn from a normal distribution with
-// mean 0 and standard deviation *jitterMs (in milliseconds)
+// epislon returns a random positive duration drawn from a rectified normal
+// distribution with mean 0 and standard deviation *jitterMs.
 func epsilon() time.Duration {
-	return time.Duration(rand.NormFloat64() * *jitterMs)
+	jitterNano := *jitterMs * 1000
+	return time.Duration(math.Abs(rand.NormFloat64() * jitterNano))
 }
 
-func ttNow() (earliest, latest time.Time) {
+// ttNow returns the earliest and latest possible time, as well as the epsilon
+// used to calculate the range.
+func ttNow() (earliest, latest time.Time, eps time.Duration) {
 	t := time.Now()
 	e := epsilon()
-	return t.Add(e), t.Add(-e)
+	return t.Add(-e), t.Add(e), e
 }
 
-func wait() time.Time {
-	t := time.Now()
-	time.Sleep(epsilon() * time.Millisecond)
-	return t
+// wait obtains the current time and sleeps until future timestamps are guaranteed
+// to be greater than the current time.
+func wait() (t time.Time, e time.Duration) {
+	t, e = time.Now(), epsilon()
+	time.Sleep(e)
+	return
 }
 
 func handleNow(w http.ResponseWriter, r *http.Request) {
@@ -41,9 +54,10 @@ func handleNow(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	earliest, latest := ttNow()
-	w.Header().Add("Consistent-Range-Earliest", fmt.Sprintf("%d", earliest.UnixNano()/1000))
-	w.Header().Add("Consistent-Range-Latest", fmt.Sprintf("%d", latest.UnixNano()/1000))
+	earliest, latest, epsilon := ttNow()
+	w.Header().Add(earliestHeader, fmt.Sprintf("%d", earliest.UnixNano()))
+	w.Header().Add(latestHeader, fmt.Sprintf("%d", latest.UnixNano()))
+	w.Header().Add(epsilonDebugHeader, fmt.Sprintf("%d", epsilon.Nanoseconds()))
 	// TODO: signature
 }
 
@@ -52,7 +66,10 @@ func handleCommitWait(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	w.Header().Add("Consistent-Timestamp", fmt.Sprintf("%d", wait().UnixNano()/1000))
+	t, e := wait()
+	w.Header().Add(epsilonDebugHeader, fmt.Sprintf("%d", e.Nanoseconds()))
+	w.Header().Add(timestampHeader, fmt.Sprintf("%d", t.UnixNano()))
+	// TODO: signature
 }
 
 func main() {

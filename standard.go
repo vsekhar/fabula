@@ -8,3 +8,9 @@ const (
 	EpsilonDebugHeader = "x-Consistent-Epsilon"
 	TimestampHeader    = "Consistent-Timestamp"
 )
+
+// Paths
+const (
+	TrueTimeNowPath        = "/.well-known/truetime/now"
+	TrueTimeCommitWaitPath = "/.well-known/truetime/commitwait"
+)

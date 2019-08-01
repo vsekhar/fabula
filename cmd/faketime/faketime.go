@@ -70,8 +70,8 @@ func handleCommitWait(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Parse()
 	m := http.NewServeMux()
-	m.HandleFunc("/.well-known/truetime/now", handleNow)
-	m.HandleFunc("/.well-known/truetime/commitwait", handleCommitWait)
+	m.HandleFunc(COMMIT.TrueTimeNowPath, handleNow)
+	m.HandleFunc(COMMIT.TrueTimeCommitWaitPath, handleCommitWait)
 	s := &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
 		Handler: m,

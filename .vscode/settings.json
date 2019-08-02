@@ -3,6 +3,7 @@
         "dweb",
         "ipfs",
         "ocms",
-        "ocos"
+        "ocos",
+        "paxos"
     ]
 }

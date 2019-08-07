@@ -26,9 +26,16 @@ Consistent-Id: e919bb203@clientId
 Consistent-Type: optimistic
 ```
 
-The `Consistent-`* headers indicate to the server that this request is part of a transaction with the client-generated ID provided. The client is requesting optimistic concurrency, which means the server will not acquire locks or prevent modification to related data while the transaction proceeds.
+The `Consistent-`* headers indicate to the server that this request is part of a transaction with the client-generated ID provided. The client is requesting optimistic concurrency, which means the server will not acquire locks or prevent modification to related data while the transaction proceeds (as opposed to pessimistic conccurency control in which the server acquires locks along the way).
 
-The server may respond:
+If the server does not wish to proceed with the transaction as specified, it can refuse:
+
+```http
+HTTP/1.1 401 Unauthorized
+Host: BankA.com
+```
+
+Otherwise the server responds with the requested information:
 
 ```http
 HTTP/1.1 200 OK
@@ -92,71 +99,122 @@ The client now issues a `COMMIT` message to complete the transaction.
 ```http
 COMMIT /.well-known/consistent-id/e919bb203@clientId
 Host: BankA.com
+Content-Length: 0
 ```
 
 At this point Bank A:
 
  * Acquires locks on resources that were read or written during the transaction
-   * If the server cannot acquire any needed locks within some server-defined timeout, the transaction fails
- * Validates that no intervening transactions have altered locked data since the earlier requests
-   * If this were a pessimistic transaction, Bank A would instead have acquired locks during each of the earlier request, lessening the chance of a conflict.
- * Determine a timestamp 
- *  (since we started this transaction with optimistic concurrency control), validated that no data has changed (the account balance requested at the start of the transaction) and Bank A has accepted the transaction and provided a timestamp at which it thinks the transaction can commit. At this point, Bank A is promising not to accept anty 
+ * Validates that no intervening transactions have altered any of the data involved in the transaction since the earlier requests
+ * Determine the timestamp of the last transaction to modify any of the data involved in the transaction
+
+If the server fails to complete the above operations, the server can refuse the transaction with the appropriate error code (e.g. "408 Request Timeout" or "409 Confict").
+
+```http
+HTTP/1.1 409 Conflict
+Host: BankA.com
+```
+
+Failures can occur for several reasons. If the server cannot acquire any of the needed locks within some server-defined timeout window, the server can fail the transaction (pessimistic concurrency control will reduce the likelihood of conflicts at the cost of performance, so servers should be careful in choosing whether and for which clients they will support it). If the client does not commit the transaction within some server-defined timeout window, the server can fail the transaction. If the server encounters any internal error, the server can fail the transaction.
+
+If any participating server fails the transaction, the transaction is permanently invalidated. Upon discovering this failure, the client should inform other servers of the failure to release any acquired resources, especially if pessimistic concurrency was used.
+
+```http
+DELETE /.well-known/consistent-id/e919bb203@clientId
+Host: BankB.com
+```
+
+Servers can also unilaterally invalidate uncommitted transactions after some server-defined timeout period.
+
+If the server succeeds in validating the committability of the transaction, it will accept the transaction.
 
 ```http
 HTTP/1.1 202 Accepted
 Host: BankA.com
 Consistent-Timestamp: 1565122116462728694
+Consistent-Token: 2f9669ad4879740ce56
 ```
 
+The timestamp provided by the server during transaction acceptance must be strictly greater than the timestamp of any transaction the server has committed that has touched the data invovled in the transaction. For example, if `/accounts/clientId/balance` was last modified on BankA.com by a transaction with timestamp ...693, then the server must respond with a new timestamp of ...694 or greater. Note that this is not (yet) the timestamp assigned to the transaction, only the timestamp reflecting the acceptance of this in-progress transaction. The `Consistent-Token` is a token is used below for ordering.
+
+The client issues a similar request to all servers in the transaction.
 
 ```http
 COMMIT /.well-known/consistent-id/e919bb203@clientId
 Host: BankB.com
-```
-
-
-```http
-Content-Type: application/json; charset=utf-8
-
+Content-Length: 0
 ```
 
 ```http
-UPDATE /resource HTTP/1.1
-Host: bankA.com
+HTTP/1.1 202 Accepted
+Host: BankB.com
+Consistent-Timestamp: 1565122116476573521
+Consistent-Token: 9c79e8c07e2790bc
+```
+
+Let us review the state of the system at this point:
+
+ * The client has queried data from and enqueued a transaction at two different servers
+ * BankA.com has confirmed that the balance data read above remains valid
+ * BankA.com has confirmed that it holds locks such that conflicting modifications to the balance of the client's account at Bank A will not be made
+ * BankB.com has confirmed that it holds locks such that conflicting modifications to the balance of the client's account at Bank B will not be made
+
+The client now performs a commit wait with TrueTime:
+
+```http
+GET /.well-known/truetime/commitwait HTTP/1.1
+Host: truetime.net
 Consistent-Id: e919bb203@clientId
-
-{
-    "balance": 42,
-}
+Consistent-Token: 2f9669ad4879740ce56@BankA.com; 9c79e8c07e2790bc@BankB.com
 ```
-
-The web is a standardized and open platform for client-server communication. Applications can consolidate their data into a single database (e.g. a social network), or across multiple pre-integrated databases in a single administrative domain (e.g. a payment network).
-
-<!-- oeifjo we -->
-
-```mermaid
-graph LR;
-    Client-->Server;
-
-```
-
-Distributed applications refrain from consolidating data in a single administrative domain for safety, privacy, or other reasons. Supporting such applications in an open way, that is in a way that allows servers not previously acquainted with each other to cooperate, requires some additions to the HTTP protocol and related web infrastructure.
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Server A
-    participant Server B
-
-```
-
-```mermaid
-flowChart
-    
-```
-
-test
+TrueTime will perform a commit wait and return a timestamp as part of a [signed exchange](https://wicg.github.io/webpackage/draft-yasskin-http-origin-signed-responses.html):
 
 ```http
+HTTP/1.1 200 OK
+Host: truetime.net
+Consistent-Id: e919bb203@clientId
+Consistent-Token: 2f9669ad4879740ce56@BankA.com;
+9c79e8c07e2790bc@BankB.com
+Consistent-Timestamp: 1565122116483256324
+X-Consistent-Epsilon: 1238
+Signature:
+ sig1;
+  sig=*MEUCIQDXlI2gN3RNBlgFiuRNFpZXcDIaUpX6HIEwcZEc0cZYLAIga9DsVOMM+g5YpwEBdGW3sS+bvnmAJJiSMwhuBdqp5UY=*;
+  integrity="digest/mi-sha256";
+  validity-url="https://example.com/resource.validity.1511128380";
+  cert-url="https://example.com/oldcerts";
+  cert-sha256=*W7uB969dFW3Mb5ZefPS9Tq5ZbH5iSmOILpjv2qEArmI=*;
+  date=1511128380; expires=1511733180,
 ```
+
+TrueTime guarantees that all requests for a timestamp that started after this call returned will produce timestamps strictly greater than the timestamp provided.
+
+The client then provides this signed exchange to the servers:
+
+```http
+COMMIT /.well-known/consistent-id/e919bb203@clientId
+Host: BankA.com
+Content-Length: 553
+
+<timestamp signed exchange>
+```
+
+```http
+HTTP/1.1 200 OK
+Host: BankA.com
+```
+
+```http
+COMMIT /.well-known/consistent-id/e919bb203@clientId
+Host: BankB.com
+Content-Length: 553
+
+<timestamp signed exchange>
+```
+
+```http
+HTTP/1.1 200 OK
+Host: BankB.com
+```
+
+The transaction is now committed and globally ordered.

@@ -15,9 +15,11 @@ See [Motivation](docs/motivation.md) for more details.
 
 ## Summary
 
-`COMMIT` is a protocol for multiparty globally-ordered transactions.
+`COMMIT` is a protocol for multiparty globally-ordered transactions. This section will walk through a simple example of a client that wants to check a bank balance and then commit a transaction transferring funds between two accounts at two servers. TrueTime infrastructure is also involved.
 
-For example, the client may inquire as to the balance in its account at BankA:
+First the balance inquiry:
+
+![balance inquiry](docs/images/protocol1balance.png)
 
 ```http
 GET /accounts/clientId/balance HTTP/1.1
@@ -52,7 +54,9 @@ Consistent-Timestamp: 1565122116462728412
 
 The server provides data for the requested resource in an application-defined format, accurate as of the provided `Consistent-Timestamp`.
 
-Subsequently, the client may make separate requests to two different servers, BankA.com and BankB.com to update balances.
+The client can then manipulate the data on two servers.
+
+![transaction](docs/images/protocol1benqueue.png)
 
 ```http
 PUT /accounts/clientId/transactions HTTP/1.1
@@ -94,7 +98,9 @@ Host: BankB.com
 
 At this point, the client has transactionally inquired as to their balance at BankA, and enqueued a transfer of 10 dollars from their account at Bank A to their account at Bank B.
 
-The client now issues a `COMMIT` message to complete the transaction.
+The client now begins the commit process using the `COMMIT` verb:
+
+![commit protocol](docs/images/protocol2commit.png)
 
 ```http
 COMMIT /.well-known/consistent-id/e919bb203@clientId
@@ -181,8 +187,8 @@ Signature:
  sig1;
   sig=*MEUCIQDXlI2gN3RNBlgFiuRNFpZXcDIaUpX6HIEwcZEc0cZYLAIga9DsVOMM+g5YpwEBdGW3sS+bvnmAJJiSMwhuBdqp5UY=*;
   integrity="digest/mi-sha256";
-  validity-url="https://example.com/resource.validity.1511128380";
-  cert-url="https://example.com/oldcerts";
+  validity-url="https://truetime.net/resource.validity.1511128380";
+  cert-url="https://truetime.net/oldcerts";
   cert-sha256=*W7uB969dFW3Mb5ZefPS9Tq5ZbH5iSmOILpjv2qEArmI=*;
   date=1511128380; expires=1511733180,
 ```

@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant Client
+    participant BankA.com
+    participant BankB.com
+    participant TrueTime
+
+    Note over Client, BankA.com: Consistent-Timestamp: 1565122116462728412<br/>{"balance": 100, "currency": "USD"}
+    Client ->> BankA.com: PUT /accounts/clientId/transactions
+    Note over Client, BankA.com: Consistent-Id e919bb203@clientId<br/>Consistent-Type: optimistic<br/>{"amount":-10, "payee": "clientId@BankB.com"}
+    BankA.com ->> Client: 200 OK
+    Client ->> BankB.com: PUT /accounts/clientId/transactions
+    Note over Client, BankA.com: Consistent-Id e919bb203@clientId<br/>Consistent-Type: optimistic<br/>{"amount":10, "payee": "clientId@BankA.com"}
+    BankB.com ->> Client: 200 OK

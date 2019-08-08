@@ -6,8 +6,16 @@ PATH := $(PATH):$(HOME)/node_modules/.bin
 SHELL := env PATH=$(PATH) /bin/bash
 
 MERMAID=mmdc
+MERMAIDCONFIG=images/mermaidconfig.json
 
-%.png: %.mmd
-	$(MERMAID) -i $< -o $@
+%.png: %.mmd $(MERMAIDCONFIG)
+	$(MERMAID) --configFile $(MERMAIDCONFIG) --input $< --output $@
 
-all: $(OBJS)
+default: $(OBJS)
+
+all: clean default
+
+.PHONY: clean default
+
+clean:
+	rm -rf $(OBJS)

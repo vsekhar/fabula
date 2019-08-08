@@ -1,0 +1,10 @@
+{
+    "startOnLoad": true,
+    "sequence": {
+        "htmlLabels": true,
+        "actorMargin": 80,
+        "bottomMarginAdj": 15
+    },
+    "theme": "dark",
+    "background": "transparent"
+}

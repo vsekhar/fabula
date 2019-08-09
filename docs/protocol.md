@@ -10,7 +10,7 @@ A client maintains ledgers for a set of bank accounts. Due to jurisdictional iss
 
 First the client queries the balance of its account recorded on the server BankA.com.
 
-![balance inquiry](docs/images/protocol1balance.png)
+![balance inquiry](images/protocol1balance.png)
 
 ```http
 GET /accounts/clientId/balance HTTP/1.1
@@ -49,7 +49,7 @@ The server provides data for the requested resource in an application-defined fo
 
 The client can provisionally manipulate the data on two servers. The changes are provisional until the commitment phase is completed below.
 
-![transaction](docs/images/protocol1benqueue.png)
+![transaction](images/protocol1benqueue.png)
 
 ```http
 PUT /accounts/clientId/transactions HTTP/1.1
@@ -95,7 +95,7 @@ At this point, the client has transactionally inquired as to their balance at Ba
 
 The client now begins the commit process using the `COMMIT` verb:
 
-![commit protocol](docs/images/protocol2commit.png)
+![commit protocol](images/protocol2commit.png)
 
 ```http
 COMMIT /.well-known/consistent-id/e919bb203@clientId

@@ -5,5 +5,10 @@
         "ocms",
         "ocos",
         "paxos"
+    ],
+    "cSpell.ignoreWords": [
+        "benqueue",
+        "commitwait",
+        "truetime"
     ]
 }

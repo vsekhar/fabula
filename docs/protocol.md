@@ -1,4 +1,4 @@
-# Protocol Walkthrough
+# Protocol Walk-through
 
 This page walks through a simple example of the `COMMIT` verb in action.
 
@@ -19,7 +19,7 @@ Consistent-Id: e919bb203@clientId
 Consistent-Type: optimistic
 ```
 
-The `Consistent-`* headers indicate to the server that this request is part of a transaction with the client-generated ID provided. The client is requesting optimistic concurrency, which means the server will not acquire locks or prevent modification to related data while the transaction proceeds (as opposed to pessimistic conccurency control in which the server acquires locks along the way).
+The `Consistent-`* headers indicate to the server that this request is part of a transaction with the client-generated ID provided. The client is requesting optimistic concurrency, which means the server will not acquire locks or prevent modification to related data while the transaction proceeds (as opposed to pessimistic concurrency control in which the server acquires locks along the way).
 
 If the server does not wish to proceed with the transaction as specified, it can refuse:
 
@@ -89,7 +89,7 @@ HTTP/1.1 200 OK
 Host: BankB.com
 ```
 
-At this point, the client has transactionally inquired as to their balance at BankA, and enqueued a transfer of 10 dollars from their account at Bank A to their account at Bank B.
+At this point, the client has atomically inquired as to their balance at BankA, and enqueued a transfer of 10 dollars from their account at Bank A to their account at Bank B.
 
 ## Commitment
 
@@ -109,7 +109,7 @@ At this point Bank A:
  * Validates that no intervening transactions have altered any of the data involved in the transaction since the earlier requests
  * Determine the timestamp of the last transaction to modify any of the data involved in the transaction
 
-If the server fails to complete the above operations, the server can refuse the transaction with the appropriate error code (e.g. "408 Request Timeout" or "409 Confict").
+If the server fails to complete the above operations, the server can refuse the transaction with the appropriate error code (e.g. "408 Request Timeout" or "409 Conflict").
 
 ```http
 HTTP/1.1 409 Conflict
@@ -127,7 +127,7 @@ Host: BankB.com
 
 Servers can also unilaterally invalidate uncommitted transactions after some server-defined timeout period.
 
-If the server succeeds in validating the committability of the transaction, it will accept the transaction.
+If the server succeeds in validating that the transaction can be committed, it will accept the transaction.
 
 ```http
 HTTP/1.1 202 Accepted
@@ -136,7 +136,7 @@ Consistent-Timestamp: 1565122116462728694
 Consistent-Token: 2f9669ad4879740ce56
 ```
 
-The timestamp provided by the server during transaction acceptance must be strictly greater than the timestamp of any transaction the server has committed that has touched the data invovled in the transaction. For example, if `/accounts/clientId/balance` was last modified on BankA.com by a transaction with timestamp ...693, then the server must respond with a new timestamp of ...694 or greater. Note that this is not (yet) the timestamp assigned to the transaction, only the timestamp reflecting the acceptance of this in-progress transaction. The `Consistent-Token` is a token is used below for ordering.
+The timestamp provided by the server during transaction acceptance must be strictly greater than the timestamp of any transaction the server has committed that has touched the data involved in the transaction. For example, if `/accounts/clientId/balance` was last modified on BankA.com by a transaction with timestamp ...693, then the server must respond with a new timestamp of ...694 or greater. Note that this is not (yet) the timestamp assigned to the transaction, only the timestamp reflecting the acceptance of this in-progress transaction. The `Consistent-Token` is a token is used below for ordering.
 
 The client issues a similar request to all servers in the transaction.
 

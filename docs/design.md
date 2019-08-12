@@ -15,3 +15,9 @@ Can a server maliciously backdate a transaction? Not unlaterally. No one will co
 What about disjoint sets of servers? Can an attacker use a few servers that are "behind" to backdate a transaction relative to a few servers that are "ahead"? Yes.
 
 Proposal: servers in phase 1 can provide a salt to the client, client provides this salt to timeservers, which sign it along with the timestamp. Timestamp is sent back to servers.
+
+## Open: Servers that don't know about `Consistent-*`
+
+Servers that haven't been upgrade will process PUT/PATCH/etc. commands immediately. This may be contrary to the semantics the client wants. Need a way to cause such servers to error out. A single unknown header may not do it.
+
+New verb? MPUT and friends?

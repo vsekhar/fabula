@@ -30,14 +30,71 @@ New verb? MPUT and friends?
 
 Possible "layers" of a service:
 
- * TrueTime ranges: [tt.earliest, tt.latest]
- * TrueTime timestamps: tt.timestamp
+ * TrueTime ranges: `[tt.earliest, tt.latest]`
+   * Semantic: what time is it _not_?
+   * Useful to exclude non-causal possible orderings by looking for disjoint intervals
+   * Service maintains infrastructure to provide current time and uncertainty (epsilon)
+   * Might be semantically misused (e.g. using midpoint as a "more accurate clock")
+   * No specific use case that can't be more robustly covered by a post-commit wait timestamp (below)
+ * TrueTime timestamps: `tt.timestamp`
+   * Semantic: produce a causally-robust ordering of events (global monotonic wall clock)
    * Reduce TrueTime range to a single timestamp by performing a commit wait
+   * Service is very similar to one providing ranges
+   * Harder to misuse a post-commit wait timestamp than a range
+   * Not any worse for performance, users of a timestamp range could just run a concurrent request for a post-commit wait timestamp
+
+With the above, abitrary groups of servers could establish an ordering for their events that is externally consistent and globally ordered with all other events on all other servers.
+
+But what if they fail during consensus? Each would need to maintain its own robust replicated log for recovery. Can we abstract this away?
+
+ * Logged TrueTime timestamps: `{requestId, tt.timestamp}`
+   * Semantic: logged causal ordering of events
+   * Clients can request a timestamp by sending a new arbitrary `partialRequestId`
+   * Service performs commit wait and sends back `{requestId, tt.timestamp}`
+     * `requestId = partialRequestId + serverSalt` for uniqueness
+   * Anyone can send an existing `requestId` and get back the (logged) `tt.timestamp` for that request
+   * Logged timestamps expire after 30 (?) days
+   * In Paxos, a client making a COMMIT decision issues a logged timestamp request
+   * Existance of the timestamp in the log is evidence of the COMMIT decision
+   * Any failed server (or a server that just doesn't hear about the COMMIT decision) can ask the service if a timestamp for this transaction has been requested, and if so, commits the transaction with that timestamp
+   * Servers cannot discard the transaction until a global timeout has been met
+>  * TODO: add expiry to the service semantics, the service has to be part of deciding whether to expire a transaction
+
+> * TODO: There's probably something in between these two.
+ * Ordered logging service
+   * Semantic: maintain log of timestamp requests, keyed by requester and some requester-provided metadata
+   * Allows failed nodes to reliably confirm a timestamp
  * Consensus service:
    * Establish and record encrypted payloads comprising transactions
    * Trusted third-party oracle for commitment and ordering
    * Provides recovery path without requiring servers to properly behave
    * Servers only need to properly prevent conflicts within _their_ locally stored data
+
+### Scratch
+
+Decisions:
+
+ * Client makes commit decision
+ * Ordering service is authoritative about state of transaction
+ * Servers determine if local conflicts prevent transaction
+ > * TODO: Servers verify other servers are participating/committing
+
+Life of a transaction
+
+
+ * Client enqueues all operations with servers (verify operations are valid, or fail)
+ * Meanwhile client "opens" a ticket with logged ordering service
+   * Client specifies a timeout, needs to be a timeout acceptable to all servers
+   * Service replies with ticketId (no timestamp yet)
+ * Start commit process
+   * Client issues `COMMIT` to all servers with ticketId and (non-authoritative) timeout
+   * Servers acquire all locks and reply ready to commit (or fail)
+     * Servers are now "committed"
+   * Servers acquire all locks
+   * Servers reply ready to commit (or fail)
+     * Ready servers cannot back out, they have to wait for a commit decision (timeout?)
+     * Failed servers
+ * Acquire all locks
 
 ### Flow
 
@@ -53,7 +110,6 @@ Possible "layers" of a service:
  8. Consensus service performs commit wait
  9. If majority of servers reply 
 
-
 Open questions:
 
  * Payloads available to everyone?
@@ -61,3 +117,23 @@ Open questions:
  * Scale:
    * Consensus service requires storage (logging) that scales with number of transactions (for however long records need to be kept)
    * Lock service requires storage that scales with number of locks
+ * Cannot do this without semantic integration
+   * Not only does BankA want to know that BankB is particpating in the transaction, BankA wants to know that there is a debit of $10 from BankB before BankA will credit $10.
+   * So some cross-origin content visibility is needed for cross-origin transactions
+   * But how much visibility? The whole transaction (including upstream and downstream parts)? Who decides? How does the client construct a transaction and sub-parts to share with each of the participants?
+   * Two-way trust? At a minimum, BankA needs to say "I want verification from BankB" and BankB needs to say "I will permit sharing transaction details with BankA."
+
+## Other ideas
+
+ * Hashgraph: all nodes replicate a git-like graph of events (including gossip events)
+   * Node-local repos have all information needed to run deterministic ordering algorithms that do not require communication
+   * Storage requirements scale with number of gossip messages, not number of transactions
+   * Transactions can be batched into fewer gossip events, so probably not that bad
+   * Nodes sign their own transactions locally
+   * Nodes build up trust over time via gossiping known-good information (information that can be verified by multiple sources)
+   * Resilient to <1/3 bad actors
+   * Global complete record stored at every node (though nodes don't need to store all history if they trust some starting point)
+     * New nodes just need a single hash to use as their "root", can get it from a trusted source and validate over time
+   * No central server
+   * 100k messages per second (?)
+   * All messages available to all nodes

@@ -93,7 +93,13 @@ At this point, the client has atomically inquired as to their balance at BankA, 
 
 ## Commitment
 
-The client now begins the commit process using the `COMMIT` verb. The overall flow of the commit phase is as follows:
+The client now begins the commit process using the `COMMIT` verb and the Paxos consensus algorithm.
+
+Paxos generally involves a set of participants attempting to agree on a value. A proposer proposes a value to a set of acceptors. Acceptors accept a value if and only if the proposed value is greater than or equal to the maximum proposed value each acceptor has ever seen. Successive attempts at reaching consensus will involve proposing progressively higher values in a monotonic fashion. This approach matches well with the notion of time.
+
+The commitment phase uses Paxos to get consensus on a _timestamp_ at which to apply the transaction. Each participant may have prior transactions (with their own earlier timestamps) associated with each data element involved in the transaction. Any new transaction must be timestamped with some value greater than the maximum of all of these. I.e. any new transaction must be recorded as having occurred _after_ all prior transactions.
+
+At the same time, the transaction should be well ordered with all other transactions occuring globally anywhere in the world, even on disjoint data sets held by disjoint sets of servers. TrueTime is used to provide this additional guarantee.
 
 ![commit protocol](images/protocol2commit.png)
 

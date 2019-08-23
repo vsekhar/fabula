@@ -99,7 +99,7 @@ Paxos generally involves a set of participants attempting to agree on a value. A
 
 The commitment phase uses Paxos to get consensus on a _timestamp_ at which to apply the transaction. Each participant may have prior transactions (with their own earlier timestamps) associated with each data element involved in the transaction. Any new transaction must be timestamped with some value greater than the maximum of all of these. I.e. any new transaction must be recorded as having occurred _after_ all prior transactions.
 
-At the same time, the transaction should be well ordered with all other transactions occuring globally anywhere in the world, even on disjoint data sets held by disjoint sets of servers. TrueTime is used to provide this additional guarantee.
+At the same time, the transaction should be well ordered with all other transactions occurring globally anywhere in the world, even on disjoint data sets held by disjoint sets of servers. TrueTime is used to provide this additional guarantee.
 
 ![commit protocol](images/protocol2commit.png)
 
@@ -124,7 +124,7 @@ HTTP/1.1 409 Conflict
 Host: BankA.com
 ```
 
-In addition to consistency violations, a server can unilaterally refuse a transaction if the client simply takes too long to issue a COMMIT request, the client is no longer authorized to perform the requested operaiotns, or any other server-internal error occurs.
+In addition to consistency violations, a server can unilaterally refuse a transaction if the client simply takes too long to issue a COMMIT request, the client is no longer authorized to perform the requested operations, or any other server-internal error occurs.
 
 If any participating server fails the transaction, the transaction is permanently invalidated. Upon discovering this failure, the client should inform other servers of the failure to release any acquired resources, especially if pessimistic concurrency was used.
 

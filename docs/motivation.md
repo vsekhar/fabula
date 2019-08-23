@@ -1,10 +1,14 @@
 # Motivation
 
-The web started out as a decentralized collection of academic institution servers making documents available to each other. It has [shifted to a centralized model](https://hackernoon.com/the-evolution-of-the-internet-from-decentralized-to-centralized-3e2fa65898f5) consisting of large information services managing silos of data. This has some [drawbacks](https://bdtechtalks.com/2017/10/27/why-does-the-centralized-internet-suck/).
+The web [started out](https://webfoundation.org/about/vision/history-of-the-web/) as a decentralized collection of academic institution servers making documents available to each other. It has [shifted to a centralized model](https://hackernoon.com/the-evolution-of-the-internet-from-decentralized-to-centralized-3e2fa65898f5) consisting of large information services managing silos of data. This has some [drawbacks](https://bdtechtalks.com/2017/10/27/why-does-the-centralized-internet-suck/).
 
-The [Distribute Web](https://hacks.mozilla.org/category/dweb/) (Dweb) movement arose to counter this centralization. Dweb projects like [IPFS](https://ipfs.io/) replace many of the web's naming and routing protocols with global content-addressable storage distributed among a set of decentralized servers. This comes at [a cost in bandwidth and availability](https://hackernoon.com/ipfs-a-complete-analysis-of-the-distributed-web-6465ff029b9b). While batching and local signing permit the rapid creation of transactions, ensuring transactions are durably committed requires time for the transaction to "settle" into the distributed data structure.
+The [Distributed Web](https://hacks.mozilla.org/category/dweb/) (Dweb) movement arose to counter this centralization. Dweb projects like [IPFS](https://ipfs.io/) replace many of the web's naming and routing protocols with global content-addressable storage distributed among a set of decentralized servers. This comes at [a cost in bandwidth and availability](https://hackernoon.com/ipfs-a-complete-analysis-of-the-distributed-web-6465ff029b9b). While batching and local signing permit the rapid creation of transactions, ensuring transactions are durably committed requires time for the transaction to "settle" into the distributed data structure.
 
-This raises the question: are only two architectures possible? Is it a choice between the efficient but centralized web of today and the fully decentralized but inefficient approach proposed by Dweb?
+This raises the question: are only two architectures possible? Is it a choice between the efficient but centralized web of today and the fully decentralized but inefficient approaches of the Dweb movement?
+
+## Cooperative vs. centralized vs. decentralized
+
+> TODO: alternative to centralized doesn't have to be completely decentralized. Allow services to cooperate. Web already supports this, but without "strong" guarantees. So applications that need such strong guarantees cannot arise on a cooperative web.
 
 ## ACID properties and roles
 
@@ -13,7 +17,7 @@ The [ACID properties](https://en.wikipedia.org/wiki/ACID) are required for updat
  * Atomicity: either all modifications to data are applied, or none are (even in the presence of failures, crashes, etc.)
  * Consistency: invariants are preserved at all points (even invariants that apply across multiple systems)
  * Isolation: transactions and their effects are well-ordered, and not interleaved
- * Durability: committed transactions remain commited (even in the presence of failures)
+ * Durability: committed transactions remain committed (even in the presence of failures)
 
 Distributed systems like block chains and hash graphs entrust the achievement of all four ACID properties to a single data structure. Since that data structure is distributed, _all servers_ become responsible for providing all four ACID properties to all clients.
 

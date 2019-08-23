@@ -46,7 +46,7 @@ func wait() (t time.Time, e time.Duration) {
 
 func handleNow(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "HEAD" {
-	w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	earliest, latest, epsilon := ttNow()

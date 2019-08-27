@@ -8,6 +8,14 @@ Does each server commiting a transaction obtain its own TrueTime timestamp from 
 
 Timestamps are signed by infrastructure so can't be forged. A _happens after_ relation can be obtained by including a token \[chain\] in the timestamp request (at the cost of a roundtrip). Each server can thus validate that the timestamp came from infrastructure. Each server also validates that it is committing a transaction with a timestamp greater than all previous timestamps for those data elements.
 
+## Resolved: Standard protocol for servers to run Paxos (need well-behaved proposers)
+
+One critical element of the Paxos protocol is that proposers must propose an old value (possibly a value from another proposer) if that value is already in flight, ignoring their own value. In this case leaders can lie (acceptors can also lie with other consequences).
+
+Byzantine Paxos addresses this but requires broadcast messages to ensure acceptors, not just proposers, know about the votes of other acceptors and can verify the decisions made by the proposer. This creates a minor problem of increasing message load and a major problem of requiring all-to-all reachability.
+
+If Paxos is used, it should be confined to operate within a trusted service, with the decisions made via Paxos exposed to transaction participants. This is consistent with providing a "consensus service" rather than a timestamp service (lower level) or a lock service (higher level).
+
 ## Open: preventing backdating attack
 
 Can a server maliciously backdate a transaction? Not unlaterally. No one will commit a transaction before the timestamp of any existing data record.
@@ -32,20 +40,39 @@ Possible "layers" of a service:
 
  * TrueTime ranges: `[tt.earliest, tt.latest]`
    * Semantic: what time is it _not_?
-   * Useful to exclude non-causal possible orderings by looking for disjoint intervals
+   * Used to guard against counter-causal possible orderings of events
    * Service maintains infrastructure to provide current time and uncertainty (epsilon)
    * Might be semantically misused (e.g. using midpoint as a "more accurate clock")
+     * Doesnt matter too much, misuse would have only local effect
    * No specific use case that can't be more robustly covered by a post-commit wait timestamp (below)
  * TrueTime timestamps: `tt.timestamp`
    * Semantic: produce a causally-robust ordering of events (global monotonic wall clock)
    * Reduce TrueTime range to a single timestamp by performing a commit wait
-   * Service is very similar to one providing ranges
+   * Service is functionally the same as the one providing TrueTime ranges, just slower :p
    * Harder to misuse a post-commit wait timestamp than a range
-   * Not any worse for performance, users of a timestamp range could just run a concurrent request for a post-commit wait timestamp
+   * Not any worse for performance for clients; clients
+     * acquie locks
+     * initiate a timestamp request
+     * do other work while timestamp request and commit wait are in flight
+     * wrap up once a timestamp is received.
 
 With the above, abitrary groups of servers could establish an ordering for their events that is externally consistent and globally ordered with all other events on all other servers.
 
-But what if they fail during consensus? Each would need to maintain its own robust replicated log for recovery. Can we abstract this away?
+One of the main (only?) things they would use this strong ordering property for is tracking decisions between servers: i.e. consensus. This is a solved problem: use Paxos.
+
+But Paxos requires well-behaved future leaders to help recover values from failed leaders. Other protocols like Raft have similarly cooperative requirements for log recovery. In an open system, this requirement is dangerous: a badly-behaved participant can exploit previous failures to alter commitments already made.
+
+So we need to do more than abstract ordering to a trusted global service. We need to abstract consensus as well.
+
+THe most minimal for of a consensus service would entail:
+
+ * Global ordering
+ * Monotonic consensus
+ * Durable storage (time-limited)
+
+A client sends a proposal to the consensus service and all servers. The consensus service creates a CAS record of the proposal with a creation timestamp and an expiry timestamp. The servers respond back to the client with a signature. The client makes a commit decision and submits the commit decision to the consensus service with the signatures of all accepting servers. The consensus service moves the proposal record to a commit record, adds the signatures of the accepting servers, and sends back a post-commit wait timestamp to the client. The client sends the commit decision and timestamp to the servers. The servers respond with a commit. If anyone fails, they can consult the consensus service to learn whether a decision had been made.
+
+But what if they fail during consensus? Each would need to maintain its own robust replicated log for recovery. Can we handle this as well with shared infrastructure?
 
  * Logged TrueTime timestamps: `{requestId, tt.timestamp}`
    * Semantic: logged causal ordering of events

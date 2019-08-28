@@ -1,12 +1,13 @@
-// Package COMMIT defines constants and strings for the COMMIT HTTP verb.
-package COMMIT
+// Package commit defines constants and strings for the COMMIT HTTP verb.
+package commit
 
 // Header names
 const (
 	EarliestHeader     = "Consistent-Earliest"
 	LatestHeader       = "Consistent-Latest"
-	EpsilonDebugHeader = "x-Consistent-Epsilon"
 	TimestampHeader    = "Consistent-Timestamp"
+	EpsilonDebugHeader = "x-Consistent-Epsilon"
+	FakeDebugHeader    = "x-Consistent-Fake"
 )
 
 // Paths

@@ -4,6 +4,12 @@ The web [started out](https://webfoundation.org/about/vision/history-of-the-web/
 
 The [Distributed Web](https://hacks.mozilla.org/category/dweb/) (Dweb) movement arose to counter this centralization. Dweb projects like [IPFS](https://ipfs.io/) replace many of the web's naming and routing protocols with global content-addressable storage distributed among a set of decentralized servers. This comes at [a cost in bandwidth and availability](https://hackernoon.com/ipfs-a-complete-analysis-of-the-distributed-web-6465ff029b9b). While batching and local signing permit the rapid creation of transactions, ensuring transactions are durably committed requires time for the transaction to "settle" into the distributed data structure.
 
+> TODO: restate problem of decentralized blockchains etc. as solving too many problems at once: ordering, monotonicity, durability, conflict prevention, others? Don't need to solve all of these in a fully decentralized way.
+
+![centralized, decentralized and distributed networks](images/networks.png)
+
+Source: [Baran, Paul. On Distributed Communication Networks. RAND Corporation. 1962.](http://pages.cs.wisc.edu/~akella/CS740/F08/740-Papers/Bar64.pdf)
+
 This raises the question: are only two architectures possible? Is it a choice between the efficient but centralized web of today and the fully decentralized but inefficient approaches of the Dweb movement?
 
 ## Cooperative vs. centralized vs. decentralized

@@ -2,19 +2,91 @@
 
 This document captures open and resolved design decisions.
 
+## Sticky: separation of concerns
+
+ * Ordering
+   * "Event A strictly bisects all possible causally-connected events"
+   * "All events are externally consistent"
+ * Logging
+   * "Event A occurred, Server B pre-committed, etc."
+   * Durable in the face of failures, including counter-party failure
+     * "Can't trust that _other_ people are logging"
+   * Trillian allows you to distrust the log provider
+ * Consensus
+   * "Jill agrees IFF Bob and Sandy do as well"
+   * Does unanimity suffice? Can it be extensible? Programmable?
+   * Interledger uses unanimous chain consensus
+
+## Idea: Promise service
+
+ * Globally ordered promise creation, evolution and resolution
+ * Promises can be created with an expiry and deletion time
+ * Promises contain at least one commitment
+ * Commitments are identified by:
+   * Public key of committer (can be any key belonging to anyone), signature proving possession of private key
+   * Timestamp commitment was submitted and accepted
+   * Optional: public key of committer(s) a commitment is conditioned on
+     * A commitment is resolved if its conditional commitments are resolved
+     * Commitments without conditions are resolved immediately
+ * Examples:
+   * One-off commitment: Jill commits @ 42s
+   * Conditional commitments can stack up:
+     * Jill commits @ 42s IFF Sally commits
+     * Sally commits @ 46s IFF Jon commits
+     * Jon commits @ 55s
+ * The first moment all commitments in a promise are resolved, the promise is resolved with the timestamp of the last satisfied commitment
+   * No further commitments will be accepted
+ * If a promise is not resolved before its expiry, it is expired
+   * Expiry can be lazily computed the next time the promise is accessed (an attempt to read the state of the promise or an attempt to add a commitment)
+
+ * Promise semantics are entirely up to the customers
+   * Promise service does not and cannot know what is being committed or exchanged
+   * Customes are responsible for transmitting the ID of the promise involved and provoking the necessary commitments from the necessary parties
+  
+ * Privacy?
+   * For verifiability, promises must be publicly available
+   * Promises reveal which public keys interacted with which other public keys
+   * If public keys are well known, entity interactions can be traced
+     * This was OK for certificate transparency
+     * Not OK for payment system
+   * How else can correct operation of the system
+   * Solution:
+     * Promises can only be read by holders of private keys matching the public keys contained in a promise's commitments
+     * Readers can read the overall state of the promise and can read the signature of the commitment the reader's commitment is conditioned on, if any
+     * E.g. Jill commits @ 42s IFF Sally commits
+       * Thus Jill can later read the promise, its overall state (open, resolved, expired, timestamps) and can read the verifiable signature of Sally's commitment if Sally has made such a commitment
+   * Knowing the identity of a promise means you can:
+     * Read the state of the promise
+     * Insert a commitment while open (no effect)
+     * Learn of commitments from inserted conditionals
+     * PROBLEM: insert a conditional commitment while open (blocks resolution)
+       * Promise IDs are secret bearer tokens?
+
+ * Clients can use a WebSocket to subscribe to changes to an open promise
+   * Once the promise is resolved or expired, the client is notified over the WebSocket and the socket is closed
+
+ * Use a Trillian verifiable log-backed map?
+   * Log is of promises and commitments
+   * Map is for looking up promises and commitments
+   * Everything is timestamped so they are consistent
+   * Write throughput of Trillian? Seems bounded by master that recalculates root node
+
+ * Go uses Merkle tree for the go sum service
+ * Russ calls out specifically the use of Spanner to store the merkle tree
+
 ## Resolved: Shared or separate timestamp requests (shared)
 
 Does each server commiting a transaction obtain its own TrueTime timestamp from infrastructure, or is there one party that obtains a shared timestamp? --> shared.
 
 Timestamps are signed by infrastructure so can't be forged. A _happens after_ relation can be obtained by including a token \[chain\] in the timestamp request (at the cost of a roundtrip). Each server can thus validate that the timestamp came from infrastructure. Each server also validates that it is committing a transaction with a timestamp greater than all previous timestamps for those data elements.
 
-## Resolved: Standard protocol for servers to run Paxos (need well-behaved proposers)
+## Resolved: Standard protocol for servers to run Paxos (need well-behaved proposers when recovering from failure)
 
-One critical element of the Paxos protocol is that proposers must propose an old value (possibly a value from another proposer) if that value is already in flight, ignoring their own value. In this case leaders can lie (acceptors can also lie with other consequences).
+One critical element of the Paxos protocol is that proposers must ignore their own proposal and switch to proposing an old value (possibly a value from another proposer) if that value is already in flight with a greater proposal number. In this case proposers can lie (acceptors can also lie with other consequences).
 
-Byzantine Paxos addresses this but requires broadcast messages to ensure acceptors, not just proposers, know about the votes of other acceptors and can verify the decisions made by the proposer. This creates a minor problem of increasing message load and a major problem of requiring all-to-all reachability.
+[Byzantine Paxos](https://lamport.azurewebsites.net/tla/byzsimple.pdf) addresses this but requires broadcast messages to ensure acceptors, not just proposers, know about the votes of other acceptors and can verify the decisions made by the proposer. This creates a minor problem of increasing message load and a major problem of requiring all-to-all reachability.
 
-If Paxos is used, it should be confined to operate within a trusted service, with the decisions made via Paxos exposed to transaction participants. This is consistent with providing a "consensus service" rather than a timestamp service (lower level) or a lock service (higher level).
+If Paxos is used, it should be confined to operate within a trusted service, with the decisions made via Paxos exposed to transaction participants. This is consistent with providing a "consensus service" rather than a timestamp service (lower level) or a lock service (higher level). Timestamping is still required to resolve global ordering.
 
 ## Open: preventing backdating attack
 
@@ -26,7 +98,7 @@ Proposal: servers in phase 1 can provide a salt to the client, client provides t
 
 ## Open: Servers that don't know about `Consistent-*`
 
-Servers that haven't been upgrade will process PUT/PATCH/etc. commands immediately. This may be contrary to the semantics the client wants. Need a way to cause such servers to error out. A single unknown header may not do it. Do we need an `OPTIONS` request for every server to be safe?
+Servers that haven't been upgraded will process PUT/PATCH/etc. commands immediately. This may be contrary to the semantics the client wants. Need a way to cause such servers to error out. A single unknown header may not do it. Do we need an `OPTIONS` request for every server to be safe?
 
 New verb? MPUT and friends?
 

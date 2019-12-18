@@ -45,5 +45,8 @@ func CausalNow() time.Time {
 // SleepUntilPast sleeps until t is for sure in the past.
 func SleepUntilPast(t time.Time) {
 	e, _ := Nowish()
-	time.Sleep(e.Sub(t))
+	for e.Sub(t) > 0 {
+		time.Sleep(e.Sub(t))
+		e, _ = Nowish()
+	}
 }

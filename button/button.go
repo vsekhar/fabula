@@ -18,6 +18,7 @@ import (
 
 // Button is a one-way atomic primitive.
 type Button struct {
+	id      []byte
 	notary  *notary.Service
 	timeout time.Time
 	keys    map[string]bool // hex encoded
@@ -36,6 +37,7 @@ func New(n *notary.Service, d time.Duration, keys []ed25519.PublicKey) (*Button,
 		return nil, err
 	}
 	b := &Button{
+		// id: signature of notarization,
 		notary:  n,
 		timeout: nt.Timestamp.Add(d),
 		keys:    make(map[string]bool),

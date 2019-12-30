@@ -1,5 +1,9 @@
-# `COMMIT`
+# COMMIT
 
-This repo contains a proposal for `COMMIT`, a new HTTP verb with associated protocols and infrastructure for globally-consistent multi-party distributed systems.
+COMMIT is a proof-of-concept stack of services and protocols for verifiable decentralized action on the web.
 
-See https://vsekhar.github.io/COMMIT for details.
+It consists of the following components:
+
+ * Notary: a trust-nothing verifiable notary and timestamping service
+ * Button: a timed atomic decision primitive
+ * Consensus: a consensus protocol for multiple parties to agree on some action

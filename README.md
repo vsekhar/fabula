@@ -103,6 +103,7 @@ Internally, the notary generates a ticket using `tt.Earliest + 1*RTT` as the fir
  * Clients can collect tickets and redeem them in whatever order.
    * Shuold the infrastructure choose the ultimate timestamp as well, just pre-commit to the range?
    * Fail if ultimate timestamp cannot fit range? There could still be bias, but bias would be publishable.
+> * Base-case attack: Client can get two tickets with the same range, create two causally chained documents (B=Hash(A)) and submit them in reverse timestamp order.
  * Delay attack: infrastructure publishes really big fixed ranges to everyone, biases itself as usual.
  * Delay attack: everyone may choose earliest timestamp, so delay attack morphs to a timestamp pre-commitment attack (which can be attacked by the client via ticket collection)
  * Can neither client nor infrastructure choose the timestamp?

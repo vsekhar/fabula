@@ -4,7 +4,7 @@ This document captures open and resolved design decisions.
 
 ## Resolved: Shared or separate timestamp requests (shared)
 
-Does each server commiting a transaction obtain its own TrueTime timestamp from infrastructure, or is there one party that obtains a shared timestamp? --> shared.
+Does each server committing a transaction obtain its own TrueTime timestamp from infrastructure, or is there one party that obtains a shared timestamp? --> shared.
 
 Timestamps are signed by infrastructure so can't be forged. A _happens after_ relation can be obtained by including a token \[chain\] in the timestamp request (at the cost of a roundtrip). Each server can thus validate that the timestamp came from infrastructure. Each server also validates that it is committing a transaction with a timestamp greater than all previous timestamps for those data elements.
 
@@ -18,7 +18,7 @@ If Paxos is used, it should be confined to operate within a trusted service, wit
 
 ## Open: preventing backdating attack
 
-Can a server maliciously backdate a transaction? Not unlaterally. No one will commit a transaction before the timestamp of any existing data record.
+Can a server maliciously backdate a transaction? Not unilaterally. No one will commit a transaction before the timestamp of any existing data record.
 
 What about disjoint sets of servers? Can an attacker use a few servers that are "behind" to backdate a transaction relative to a few servers that are "ahead"? Yes.
 
@@ -43,7 +43,7 @@ Possible "layers" of a service:
    * Used to guard against counter-causal possible orderings of events
    * Service maintains infrastructure to provide current time and uncertainty (epsilon)
    * Might be semantically misused (e.g. using midpoint as a "more accurate clock")
-     * Doesnt matter too much, misuse would have only local effect
+     * Doesn't matter too much, misuse would have only local effect
    * No specific use case that can't be more robustly covered by a post-commit wait timestamp (below)
  * TrueTime timestamps: `tt.timestamp`
    * Semantic: produce a causally-robust ordering of events (global monotonic wall clock)
@@ -51,12 +51,12 @@ Possible "layers" of a service:
    * Service is functionally the same as the one providing TrueTime ranges, just slower :p
    * Harder to misuse a post-commit wait timestamp than a range
    * Not any worse for performance for clients; clients
-     * acquie locks
+     * acquire locks
      * initiate a timestamp request
      * do other work while timestamp request and commit wait are in flight
      * wrap up once a timestamp is received.
 
-With the above, abitrary groups of servers could establish an ordering for their events that is externally consistent and globally ordered with all other events on all other servers.
+With the above, arbitrary groups of servers could establish an ordering for their events that is externally consistent and globally ordered with all other events on all other servers.
 
 One of the main (only?) things they would use this strong ordering property for is tracking decisions between servers: i.e. consensus. This is a solved problem: use Paxos.
 
@@ -82,7 +82,7 @@ But what if they fail during consensus? Each would need to maintain its own robu
    * Anyone can send an existing `requestId` and get back the (logged) `tt.timestamp` for that request
    * Logged timestamps expire after 30 (?) days
    * In Paxos, a client making a COMMIT decision issues a logged timestamp request
-   * Existance of the timestamp in the log is evidence of the COMMIT decision
+   * Existence of the timestamp in the log is evidence of the COMMIT decision
    * Any failed server (or a server that just doesn't hear about the COMMIT decision) can ask the service if a timestamp for this transaction has been requested, and if so, commits the transaction with that timestamp
    * Servers cannot discard the transaction until a global timeout has been met
 >  * TODO: add expiry to the service semantics, the service has to be part of deciding whether to expire a transaction
@@ -145,7 +145,7 @@ Open questions:
    * Consensus service requires storage (logging) that scales with number of transactions (for however long records need to be kept)
    * Lock service requires storage that scales with number of locks
  * Cannot do this without semantic integration
-   * Not only does BankA want to know that BankB is particpating in the transaction, BankA wants to know that there is a debit of $10 from BankB before BankA will credit $10.
+   * Not only does BankA want to know that BankB is participating in the transaction, BankA wants to know that there is a debit of $10 from BankB before BankA will credit $10.
    * So some cross-origin content visibility is needed for cross-origin transactions
    * But how much visibility? The whole transaction (including upstream and downstream parts)? Who decides? How does the client construct a transaction and sub-parts to share with each of the participants?
    * Two-way trust? At a minimum, BankA needs to say "I want verification from BankB" and BankB needs to say "I will permit sharing transaction details with BankA."

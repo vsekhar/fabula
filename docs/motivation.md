@@ -1,10 +1,10 @@
 # Motivation
 
-The web [started out](https://webfoundation.org/about/vision/history-of-the-web/) as a decentralized collection of academic institution servers making documents available to each other. It has [shifted to a centralized model](https://hackernoon.com/the-evolution-of-the-internet-from-decentralized-to-centralized-3e2fa65898f5) consisting of large information services managing silos of data. This has some [drawbacks](https://bdtechtalks.com/2017/10/27/why-does-the-centralized-internet-suck/).
+The web [started out](https://webfoundation.org/about/vision/history-of-the-web/) as a decentralized collection of academic institution servers making documents available to each other. It has [shifted to a centralized model](https://hackernoon.com/the-evolution-of-the-internet-from-decentralized-to-centralized-3e2fa65898f5) consisting of large information services managing silos of user data. This has some [drawbacks](https://bdtechtalks.com/2017/10/27/why-does-the-centralized-internet-suck/).
 
 The [Distributed Web](https://hacks.mozilla.org/category/dweb/) (Dweb) movement arose to counter this centralization. Dweb projects like [IPFS](https://ipfs.io/) replace many of the web's naming and routing protocols with global content-addressable storage distributed among a set of decentralized servers. This comes at [a cost in bandwidth and availability](https://hackernoon.com/ipfs-a-complete-analysis-of-the-distributed-web-6465ff029b9b). While batching and local signing permit the rapid creation of transactions, ensuring transactions are durably committed requires time for the transaction to "settle" into the distributed data structure.
 
-> TODO: restate problem of decentralized blockchains etc. as solving too many problems at once: ordering, monotonicity, durability, conflict prevention, others? Don't need to solve all of these in a fully decentralized way.
+> TODO: restate problem of decentralized blockchains etc. as solving too many problems at once: ordering, monotonicity, durability, conflict prevention, resource allocation, others? Don't need to solve all of these in a fully decentralized way.
 
 ![centralized, decentralized and distributed networks](images/networks.png)
 

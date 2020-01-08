@@ -1,73 +1,120 @@
 -- Schema hierarchy:
--- + Log
+-- + Batches
+--   + Log
 -- + Decisions
 --   + Actions
 
--- Prefixes is used to manage chains. It is read lazily (in the past) when adding
--- entries to the weave. Based on load statistics, Prefixes can be split in this
--- table.
+-- Life of an entry.
 --
--- TODO: Do we need this? Any laziness requires trust in infra...
-CREATE TABLE Prefixes (
-    Region STRING,
-    Prefix BYTES(MAX),
-) PRIMARY KEY (Region, Prefix);
+--   1) A new logger starts up (GAE or GKE instance) and obtains or creates a batch.
+--   2) A new entry is written to the batch.
+--   3) The batch is eventually closed and sequenced relative to other batches.
+--   4) The entry is now inclusion-sequenced relative to all other entries.
+--   5) The entry's inclusion sequence number can be obtained by looking up its
+--      (closed) batch sequence number and adding the entry's offset within the
+--      batch. Once queried, the sequence number is written to InclusionTree.
+--   6) The entry's record hash can be obtained by hashing itself and its children.
+--      Once queried, the record hash is written to InclusionTree.
+--   7) Eventually the entry is swept up in a time sequencing.
+--
+-- TODO: sequencing batches breaks timestamp monotonicity. How to ensure infrastructure
+-- is not re-ordering events? Within a batch, timestamps are monotonic...
+--   Solution?: Sequencing is for compactness of proofs only. Timestamp monotonicity
+--   is a separate problem.
+--   When creating a new batch, find a recent-ish batch to queue off of.
 
--- Log contains log entries.
+-- Batches contains an entry for each batch.
 --
---   Region: For splittability
---   Prefix: For splittability, FIRSTN(N, DataHash)
---     -> Prefix2 (implied): FIRSTN(N, DataHash[N:])
---   Salt: rand()
---   DataHash: hash(user_data, salt)
---   Timestamp: TrueTime-valid commit timestamp
---   SequenceNo: integer counter that denotes position in the Merkle Mountain Range
+--   Region: for splittability
+--   BatchFirstDataSHA3512: DataSHA3512 of first log entry in this batch
+--   BatchSequenceNo: 0-based index of this batch
+--   Size: number of entries in the batch
+--   FirstInclusionSequenceNo: 0-based index of first entry in the batch
 --
---   If isLeaf(SequenceNo) {
---     // leaf
---     predecessor1 = RecordHash of prior entry in Prefix
---     predecessor2 = RecordHash of prior entry in Prefix2
---   } else {
---     // non-leaf
---     predecessor1 = RecordHash of prior entry in Prefix (right child)
---     predecessor2 = RecordHash of left child
---   }
+-- If the batch is open (accepting new writes) then BatchSequenceNo, Size and
+-- ItemFirstSequenceNo will all be null.
 --
---   RecordHash: hash(DataHash, Timestamp, predecessor1, predecessor2)
---     NB: RecordHash is lazily written when the record is accessed since the
---     timestamp is not available until after the entry is written.
---     NB2: This is effectively a cached value since the other values (specifically
---     DataHash, Timestamp, SequenceNo) fix the value of RecordHash.
+-- Loggers can look for an open batch by lazily (in the past) querying Batches using
+-- index BatchesByBatchSequenceNo). Loggers must transactionally check if a batch is
+-- still open when writing a new entry in Log, and find/create a new batch if the batch
+-- is closed.
+--
+-- Batches are closed by sequencing the batch, querying the count of the batch entries
+-- and writing it, and computing and writing the first sequence number of the item.
+CREATE TABLE Batches (
+    Region                        STRING(MAX),
+    BatchFirstDataSHA3512         BYTES(MAX),
+    BatchSequenceNo               INT64,
+    Size                          INT64,
+    FirstInclusionSequenceNo      INT64,
+) PRIMARY KEY (Region, BatchFirstDataSHA3512);
+
+-- For finding open batches (when writing new log entries), or looking up the last
+-- sequenced batch (when sequencing a newly-closed batch).
+CREATE UNIQUE INDEX BatchesByBatchSequenceNo ON BATCHES (Region, BatchSequenceNo DESC)
+  STORING (Size);
+
+-- Log contains entries that can be written at a high rate, partitioned by batches.
+-- The BatchFirstDataSHA3512 effectively identifies a Spanner server that writes will be
+-- sent to. Despite being sent to a single server, writes are not sequenced at the time
+-- they are made. Instead, entire batches are sequenced when they are closed.
+--
+-- All writes must transactionally check if the batch is still open by checking if the
+-- corresponding entry in Batches has BatchSequenceNo == NULL. This should be fast since
+-- the batch entry and the log entry will be confined to the same server. If during the
+-- transaction, the batch is discovered to be closed, then another batch must be used
+-- or a new batch (using the DataSHA3512 being written) must be created.
+--
+--   DataSHA3512 = hash(user_data, salt)
+--
+-- The salt value is returned to the user and not persisted in the database.
 CREATE TABLE Log (
-    Region     STRING(MAX),
-    Prefix     BYTES(MAX) NOT NULL,
-    Salt       BYTES(MAX) NOT NULL,
-    DataHash   BYTES(MAX) NOT NULL,
-    Timestamp  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
-    SequenceNo INT64,
-    RecordHash BYTES(MAX),
-) PRIMARY KEY (Region, Prefix, DataHash);
+    Region                STRING(MAX),
+    BatchFirstDataSHA3512 BYTES(MAX) NOT NULL,
+    DataSHA3512           BYTES(MAX),
+    Timestamp             TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+) PRIMARY KEY (Region, BatchFirstDataSHA3512, DataSHA3512)
+  INTERLEAVE IN PARENT Batches;
 
--- For accessing children when creating parents or digests.
-CREATE INDEX EntriesBySequenceNo ON Log (Region, Prefix, SequenceNo)
-  STORING (RecordHash);
+-- For user requests of information/proofs for a given DataSHA3512.
+CREATE INDEX EntriesByDataSHA3512 ON Log (DataSHA3512) STORING (Timestamp);
 
--- For DataHash lookup
-CREATE INDEX EntriesByDataHash ON Log (Prefix, DataHash)
-  STORING (Region, SequenceNo);
+-- Lazily populated sequencing for inclusion proofs.
+CREATE TABLE InclusionTree (
+    Region              STRING(MAX),
+    InclusionSequenceNo INT64,
+    RecordSHA3512       BYTES(MAX),
+) PRIMARY KEY (Region, InclusionSequenceNo);
 
-CREATE TABLE Decisions (
-    Region STRING NOT NULL,
-    ID     BYTES(MAX) NOT NULL, -- hash of creation log entry
-    Expiry TIMESTAMP,
-) PRIMARY KEY (Region, ID);
+-- Very lazily populated sequencing for time proofs.
+--
+-- This tree is very lazily built where the Merkle order matches the time order. It
+-- can be used to verify that the time stamps are validly issued.
+--
+-- No index for this query is built since doing so would create a hot spot at the tail
+-- end of that index where all writes would be appending recent timestamps. As a result
+-- ordering in this way requires a table scan. Quering log very far in the past (10+
+-- minutes) and limiting the number of rows produced will help manage performance.
+--
+--   SELECT *
+--   FROM Log
+--   WHERE Timestamp > {latest timestamp from TimeTree}
+--   ORDER BY Timestamp
+--   LIMIT 100;
+--
+--   TimeSHA3512 = hash(DataSHA3512, Timestamp, TimeSHA3512_child1, TimeSHA3512_child2)
+--
+-- This approach exploits the fact that Timestamp is derived from commit timestamps
+-- and that records are only ever appended to Log.
+CREATE TABLE TimeTree (
+    Region         STRING(MAX),
+    TimeSequenceNo INT64 NOT NULL,
+    Timestamp      TIMESTAMP NOT NULL,
+    TimeSHA3512    BYTES(MAX),
+) PRIMARY KEY (Region, TimeSequenceNo);
 
-CREATE TABLE Actions (
-    Region     STRING NOT NULL,
-    ID         BYTES(MAX) NOT NULL,
-    PublicKey  BYTES(MAX) NOT NULL,
+-- TODO: TimeTree may never catch up at very high write loads... Even if the queries
+-- can be split up, writes to TimeTree will be bottle-necked? Or will they? Sequence
+-- is fixed. Use LIMIT...OFFSET? Results in multiple stacked queries?
 
-    -- sign(ID, privateKey)
-    Signature  BYTES(MAX),
-) PRIMARY KEY (Region, ID, PublicKey)
-  INTERLEAVE IN PARENT Decisions ON DELETE CASCADE;
+-- TODO: Decision table, actions table (interleave in decision table)

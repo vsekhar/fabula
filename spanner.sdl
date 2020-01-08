@@ -1,0 +1,73 @@
+-- Schema hierarchy:
+-- + Log
+-- + Decisions
+--   + Actions
+
+-- Prefixes is used to manage chains. It is read lazily (in the past) when adding
+-- entries to the weave. Based on load statistics, Prefixes can be split in this
+-- table.
+--
+-- TODO: Do we need this? Any laziness requires trust in infra...
+CREATE TABLE Prefixes (
+    Region STRING,
+    Prefix BYTES(MAX),
+) PRIMARY KEY (Region, Prefix);
+
+-- Log contains log entries.
+--
+--   Region: For splittability
+--   Prefix: For splittability, FIRSTN(N, DataHash)
+--     -> Prefix2 (implied): FIRSTN(N, DataHash[N:])
+--   Salt: rand()
+--   DataHash: hash(user_data, salt)
+--   Timestamp: TrueTime-valid commit timestamp
+--   SequenceNo: integer counter that denotes position in the Merkle Mountain Range
+--
+--   If isLeaf(SequenceNo) {
+--     // leaf
+--     predecessor1 = RecordHash of prior entry in Prefix
+--     predecessor2 = RecordHash of prior entry in Prefix2
+--   } else {
+--     // non-leaf
+--     predecessor1 = RecordHash of prior entry in Prefix (right child)
+--     predecessor2 = RecordHash of left child
+--   }
+--
+--   RecordHash: hash(DataHash, Timestamp, predecessor1, predecessor2)
+--     NB: RecordHash is lazily written when the record is accessed since the
+--     timestamp is not available until after the entry is written.
+--     NB2: This is effectively a cached value since the other values (specifically
+--     DataHash, Timestamp, SequenceNo) fix the value of RecordHash.
+CREATE TABLE Log (
+    Region     STRING(MAX),
+    Prefix     BYTES(MAX) NOT NULL,
+    Salt       BYTES(MAX) NOT NULL,
+    DataHash   BYTES(MAX) NOT NULL,
+    Timestamp  TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+    SequenceNo INT64,
+    RecordHash BYTES(MAX),
+) PRIMARY KEY (Region, Prefix, DataHash);
+
+-- For accessing children when creating parents or digests.
+CREATE INDEX EntriesBySequenceNo ON Log (Region, Prefix, SequenceNo)
+  STORING (RecordHash);
+
+-- For DataHash lookup
+CREATE INDEX EntriesByDataHash ON Log (Prefix, DataHash)
+  STORING (Region, SequenceNo);
+
+CREATE TABLE Decisions (
+    Region STRING NOT NULL,
+    ID     BYTES(MAX) NOT NULL, -- hash of creation log entry
+    Expiry TIMESTAMP,
+) PRIMARY KEY (Region, ID);
+
+CREATE TABLE Actions (
+    Region     STRING NOT NULL,
+    ID         BYTES(MAX) NOT NULL,
+    PublicKey  BYTES(MAX) NOT NULL,
+
+    -- sign(ID, privateKey)
+    Signature  BYTES(MAX),
+) PRIMARY KEY (Region, ID, PublicKey)
+  INTERLEAVE IN PARENT Decisions ON DELETE CASCADE;

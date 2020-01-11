@@ -46,15 +46,31 @@
 --     Predecessor1 = right child (SequenceNo-1)
 --     Predecessor2 = left child
 --
+-- RecordSHA3512 is determined by hashing in order:
+--
+--   1) RecordSHA3512 of Predecessor1
+--   2) RecordSHA3512 of Predecessor2
+--   3) DataSHA3512
+--   4) Timestamp
+--
+-- Because Timestamp is included in this hash, RecordSHA3512 must be added to the entry
+-- after the entry is initially written. This introduces a possibility that some entries
+-- will not have a RecordSHA3512 if the writer fails between the first and second
+-- write. However, RecordSHA3512 is entirely determined by the other fields that are
+-- written on the first write: DataSHA3512, SequenceNo (which decides predecessors) and
+-- Timestamp. So encountering an entry without a RecordSHA3512 can be resolved by
+-- simply computing it at that time and adding it.
+--
 -- DigestSHA3512 holds a rolling digest of the entire prefix chain (as an MMR) as of
 -- the moment when that entry was added. It is determined by hashing in order:
 --
---   1) DigestSHA3512 of all peaks to the left of the current entry, as computed using
+--   1) RecordSHA3512 of all peaks to the left of the current entry, as computed using
 --      the new entry's SequenceNo
---   2) DigestSHA3512 of the new entry's Predecessor1
---   3) DigestSHA3512 of the new entry's Predecessor2
---   4) DataSHA3512 of the new entry
---   5) Timestamp of the new entry
+--   2) RecordSHA3512 of the new entry
+--
+-- As with RecordSHA3512, DigestSHA3512 is added on the second write. If an entry
+-- does not receive its DigestSHA3512 when initially written, it can be lazily added
+-- later.
 --
 -- --------------------------------------------
 -- Creating a digest of the full (regional) log
@@ -102,7 +118,7 @@
 -- entries (O(N) proof distance) rather than puts then in a tree (O(logN) proof distance).
 --
 -- Rolling digest is useless as soon as the next one is produced. It is not a
--- constituent in any further proof. Include both RecordSHA3512 and DigestSHA3512?
+-- constituent in any further proof. Record both RecordSHA3512 and DigestSHA3512?
 --
 -- TODO: why commit the digest?
 --
@@ -136,6 +152,9 @@
 -- TODO: What is N? How does it evolve? Ok to start with some obscenely high number?
 -- We're just computing predecessors for leaves, trees are otherwise
 
+-- NB: Cannot have a table higher in the hierarchy than Log (e.g. "Prefixes") since
+-- it would limit Log to 4GB per prefix (min. 250k prefixes to hold 1PB).
+
 -- Write new values spread across prefixes, which requires also quickly looking up
 -- the most recent value to compute the new SequenceNo and recent and prior values
 -- when computing DigestSHA3512.
@@ -144,6 +163,7 @@ CREATE TABLE Log (
     Prefix                BYTES(MAX),
     SequenceNo            INT64,
     DataSHA3512           BYTES(MAX),
+    RecordSHA3512         BYTES(MAX),
     DigestSHA3512         BYTES(MAX),
     Timestamp             TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (Region, Prefix, SequenceNo DESC);
@@ -151,7 +171,7 @@ CREATE TABLE Log (
 -- Lookup a DataSHA3512 when responding to user queries.
 --
 -- NB: Region appears so that the index can be split onto servers closer to users
--- using it; we expect DataSHA3512 to be globally unique.
+-- using it eventhough we expect DataSHA3512 to be globally unique.
 CREATE INDEX EntriesByDataSHA3512 ON Log (Region, DataSHA3512)
   STORING (SequenceNo, DigestSHA3512);
 

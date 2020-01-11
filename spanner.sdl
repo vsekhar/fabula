@@ -55,6 +55,8 @@
 --   3) DataSHA3512
 --   4) Timestamp
 --
+-- If a predecessor does not exist, it is omitted from the hash.
+--
 -- Because Timestamp is included in this hash, RecordSHA3512 must be added to
 -- the entry after the entry is initially written. This introduces a possibility
 -- that some entries will not have a RecordSHA3512, if the writer fails between
@@ -124,13 +126,14 @@
 -- Prefix, regional and global digests are computed and signed by the
 -- infrastructure.
 --
--- TODO: why commit the digest?
---
 -- This digest is signed by the infrastructure, and the digest and signature are
 -- hashed and themselves committed to the log. This means that anyone in
 -- posesssion of a prior digest can request a proof that that digest was
 -- included in any future one. The digest, its signature and the DataSHA3512 and
 -- salt of its commitment are published.
+--
+-- TODO: What if multiple possible digests were created and committed and we
+-- later shift around which one we claim is real? Signature solves that?
 --
 -- We can recreate this digest at any time in the future by doing time-specific
 -- reads in the past at the desired timestamp: Spanner guarantees we will see an
@@ -165,20 +168,29 @@
 -- up the most recent value to compute the new SequenceNo and recent and prior
 -- values when computing DigestSHA3512.
 CREATE TABLE Log (
-    Region                STRING(MAX),
-    Prefix                BYTES(64),
-    SequenceNo            INT64,
-    DataSHA3512           BYTES(64),
+    Region                STRING(MAX) NOT NULL,
+    Prefix                BYTES(64) NOT NULL,
+    SequenceNo            INT64 NOT NULL,
+    DataSHA3512           BYTES(64) NOT NULL,
     RecordSHA3512         BYTES(64),
     DigestSHA3512         BYTES(64),
     Timestamp             TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (Region, Prefix, SequenceNo DESC);
 
+-- Memcache:
+--
+--   (Region, Prefix, SequenceNo) --> RecordSHA3512
+--   (Region, Prefix, SequenceNo) --> DigestSHA3512
+--   (Region, Timestamp) --> N:last_timestamp:hash
+
+-- Lookup by timestamp is done by simply reading in the past. No index needed.
+
 -- Lookup a DataSHA3512 when responding to user queries.
 --
--- NB: Region appears so that the index can be split onto servers closer to
--- users using it eventhough we expect DataSHA3512 to be globally unique.
-CREATE INDEX EntriesByDataSHA3512 ON Log (Region, DataSHA3512)
-  STORING (SequenceNo, DigestSHA3512);
+-- This index stores Timestamp so that we can access Log via a read in the past.
+-- Making this unique guards against the exceedingly unlikely possibility of
+-- collision.
+CREATE UNIQUE INDEX EntriesByDataSHA3512 ON Log (DataSHA3512)
+  STORING (Timestamp);
 
 -- TODO: Decision table, actions table (interleave in decision table)

@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.sdl": "sql",
+    },
+    "[sql]": {
+        "editor.rulers": [80],
+    },
+}

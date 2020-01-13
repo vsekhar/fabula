@@ -1,0 +1,10 @@
+apiVersion: spanner.cnrm.cloud.google.com/v1alpha2
+kind: SpannerInstance
+metadata:
+  labels:
+    label-one: "value-one"
+  name: commit-spanner
+spec:
+  config: regional-us-central1
+  displayName: Commit Spanner Instance
+  numNodes: 1

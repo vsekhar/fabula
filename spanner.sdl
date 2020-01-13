@@ -68,26 +68,29 @@
 -- To determine the SequenceNo and the RecordSHA3512, we first compute two
 -- prefixes by splitting DataSHA3512 as follows:
 --
---   Index:    0 1 2 3 4 5 6 ... == DataSHA3512[0:64]
---   Prefix1: |0 1|2 3|          == DataSHA3512[0:4]
---            |0 1|   |4 5|
---              |   ┌───┘
---   Prefix2: |0 1|4 5|          == append(DataSHA3512[0:2], DataSHA3512[4:6])
+--   Index:         0 1 2 3 4 5 6 ... == DataSHA3512[0:64]
+--   Prefix:       |0 1|2 3|          == DataSHA3512[0:4]
+--                 |0 1|   |4 5|
+--                   |   ┌───┘
+--   CrossPrefix:  |0 1|4 5|          == append(DataSHA3512[0:2], DataSHA3512[4:6])
 --
 -- Generally, for prefix length N (which must be even):
 --
---   Prefix1 = DataSHA3512[0:N]
---   Prefix2 = append(DataSHA3512[0:N/2], DataSHA3512[N:N+N/2])
+--   Prefix = DataSHA3512[0:N]
+--   CrossPrefix = append(DataSHA3512[0:N/2], DataSHA3512[N:N+N/2])
 --
--- This ensures that the two prefixes are close to each other in the key space
--- yet wholly and deterministically set by the user input (and salt).
+-- This ensures that the two prefixes are entirely determined by the DataSHA3512
+-- (which neither the user nor the infrastructure can unilaterally determine),
+-- that CrossPrefix's position relative to Prefix is unpredictable, and yet that
+-- CrossPrefix is "close" to Prefix in the key space (which can be exploited for
+-- server locality when adding entries).
 --
--- SequenceNo is one larger than the most recent SequenceNo in Prefix1.
+-- SequenceNo is one larger than the most recent SequenceNo in Prefix.
 --
 -- Based on the SequenceNo, the new entry can be either an MMR leaf or non-leaf.
 --
 -- Non-leaf entries build up the MMR, so their predecessors are determined in
--- the usual way within the same prefix:
+-- the usual way within Prefix:
 --
 --     Predecessor1 = RightChild(SequenceNo) = SequenceNo - 1
 --     Predecessor2 = LeftChild(SequenceNo)
@@ -97,10 +100,10 @@
 -- 1) ensuring timestamps are causal and monotonic; and 2) ensuring the set of
 --  partially correct for the issues introduced by
 -- splitting the tree into many prefixes. We do this by interlocking the leaf
--- with the most recent entry in Prefix2.
+-- with the most recent entry in CrossPrefix.
 --
---     Predecessor1 = most recent entry in Prefix1 = SequenceNo - 1
---     Predecessor2 = most recent entry in Prefix2
+--     Predecessor1 = most recent entry in Prefix = SequenceNo - 1
+--     Predecessor2 = most recent entry in CrossPrefix
 --
 -- In either the leaf or non-leaf case, a Predecessor may not exist (if the
 -- prefix in question has no entries yet). In that case, the predecessor is just
@@ -114,13 +117,12 @@
 --
 -- Writing a new leaf requires consulting a different prefix chain which may
 -- reside in a different Spanner group. In a binary MMR, no more than half of
--- all entries are leaves. We select Prefix2 above to be "close" to Prefix1
--- in the key space. So for most (Prefix1, Prefix2) pairs, it is likely both
--- prefixes can be accessed in the same Spanner group. Distributed transactions
--- are thus only incurred for leaves whose prefixes straddle Spanner groups.
--- These slow writes are distributed by hash prefix, not by user or region, so
--- performance fairness is maintained. This is possibly the optimal arrangement
--- given the requirement to interlock MMRs.
+-- all entries are leaves. The proximity between Prefix and CrossPrefix means it
+-- is likely both can be accessed in the same Spanner group. Distributed
+-- transactions are thus only incurred for leaves whose prefixes straddle
+-- Spanner groups. These slow writes are fairly distributed by (random) hash
+-- prefix, not by user or region. This is possibly the optimal arrangement given
+-- the requirement to interlock MMRs.
 --
 -- RollingSHA3512 holds a rolling hash of the entire prefix chain (as an MMR)
 -- as of the moment when that entry was added. It is determined by hashing in
@@ -164,14 +166,14 @@
 --
 -- The digest of a regional log can be reported as:
 --
---      <region>:<number of entries in region>:<last timestamp>:<SHA3512>
--- e.g. NA:116575673:6546516847616981651689135662165804354685:9w/cdNba+DmCdXnIAhhF/c4W2fDTUT1reavvujhzX1hOzfSZ2hyLz4KdlLkzMilXd6Qqh19f613YYNs4hpZ4Tw
+--      <region>:<last timestamp>:<SHA3512>
+-- e.g. NA:6546516847616981651689135662165804354685:9w/cdNba+DmCdXnIAhhF/c4W2fDTUT1reavvujhzX1hOzfSZ2hyLz4KdlLkzMilXd6Qqh19f613YYNs4hpZ4Tw
 --
 -- The digest of the global log can be assembed from regional logs and reported
 -- as:
 --
---       <number of entries globally>:<last timestamp>:<SHA3512>
--- e.g.  41166575673:6546516847616981651689135662165804354685:Lh7Zv0z6McRkZmmlgCUznzbIastGxKHGDH8qOdOG5w0QIGDsOZmB19SYb53TH56gaEgm481o6acodXTVH0DZNg
+--       <last timestamp>:<SHA3512>
+-- e.g.  6546516847616981651689135662165804354685:Lh7Zv0z6McRkZmmlgCUznzbIastGxKHGDH8qOdOG5w0QIGDsOZmB19SYb53TH56gaEgm481o6acodXTVH0DZNg
 --
 -- Prefix, regional and global digests are computed and signed by the
 -- infrastructure.
@@ -206,10 +208,17 @@
 --
 -- Users request proofs of an entry by its DataSHA3512.
 --
--- TODO: Would a user have any reason to know or use the RecordSHA3512?
---
 -- TODO: What is N? How does it evolve? Ok to start with some obscenely high
 -- number? We're just computing predecessors for leaves, trees are otherwise
+--
+-- ----------------------------------------------
+-- Proving inclusion of one digest in a later one
+-- ----------------------------------------------
+--
+-- Within a prefix, this is done in the normal way.
+--
+-- TODO: across all prefixes? across all regions? these are not assembled into a
+-- tree, so compact proofs are not available... 
 
 -- NB: Cannot have a table higher in the hierarchy than Log (e.g. "Prefixes")
 -- since it would limit Log to 4GB per prefix (min. 250k prefixes to hold 1PB).

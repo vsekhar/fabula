@@ -1,14 +1,62 @@
 -- Schema hierarchy:
--- + Batches
---   + Log
+-- + Log (Region, Prefix, SequenceNo)
+--   + INDEXed on (DataSHA3512)
 -- + Decisions
 --   + Actions
 
--- Log contains the log entries.
+-- ---------------------
+-- Problems being solved
+-- ---------------------
 --
--- Spanner will split Log based on Region (to reduce network latency) and
--- prefixes of DataSHA3512.
+-- Merkle tree implementations like Trillian provide provable inclusion of log
+-- entries in a way infrastructure cannot invisibly alter. However using
+-- Trillian as a web-scale historical notary requires solving a few additional
+-- problems:
 --
+--   - Timestamping entries to allow their global ordering to be checked without
+--     consulting the log, where timestamps are:
+--     - Verifiably monotonic
+--     - Verifiably consistent (B=hash(A), B timestamp must be after that of A)
+--     - Verifiably fair (Alice doesn't get her entries delayed more than Bob)
+--   - Scaling write throughput to web scale
+--
+-- Timestamping and global ordering are achievable using public block chains at
+-- the cost of write throughput. Throughput can be increased by operating
+-- multiple independent verifiable data structures, at the cost of global
+-- ordering (cannot know the relative order of events written to different
+-- data structures).
+--
+-- We propose the "Merkle weave", an open data structure and service backed by
+-- Spanner and TrueTime, that addresses these problems.
+
+-- ---------------
+-- Design overview
+-- ---------------
+--
+-- The log is split by region to reduce user-facing latency and split by hash
+-- prefix (to increase write throughput). Each (Region, Prefix) pair defines an
+-- independent Merkle Mountain Range. An MMR is functionally similar to a Merkle
+-- tree, but is sequentially and deterministically built up from the bottom.
+--
+-- The result is a set of MMRs in each region that accept sequential writes
+-- (each write must transactionally consult the most recent previous one).
+--
+-- We can prove the inclusion of any entry within its Region- and
+-- Prefix-specific MMR in the usual way by traversing up form an entry in the
+-- MMR to the MMR's digest.
+--
+-- Multiple independent MMRs introduce flex into the system by potentially
+-- allowing malicious infrastructure to manipulate write order across MMRs. To
+-- guard against this, we interlock the MMRs so that the datastructure
+-- comprising the set of all MMRs is nevertheless lockstep built-up from user
+-- inputs alone.
+--
+-- Interlocking is achieved in two ways. First, at the bottom, leaf entries tie
+-- together different MMRs using deterministic prefixing and hash chaining.
+-- Second, MMRs are tied together when an overall digest is computed across all
+-- MMRs for a region. These techniques are described in the relevant sections
+-- below.
+
 -- --------------------------------
 -- Appending new entries to the log
 -- --------------------------------
@@ -31,55 +79,57 @@
 --   Prefix1 = DataSHA3512[0:N]
 --   Prefix2 = append(DataSHA3512[0:N/2], DataSHA3512[N:N+N/2])
 --
--- This ensures that the two prefix chains we will use later are close to each
--- other in the key space and thus likely (especially early on) to reside on the
--- same server. These prefixes are used below.
+-- This ensures that the two prefixes are close to each other in the key space
+-- yet wholly and deterministically set by the user input (and salt).
 --
 -- SequenceNo is one larger than the most recent SequenceNo in Prefix1.
 --
 -- Based on the SequenceNo, the new entry can be either an MMR leaf or non-leaf.
--- If the new entry is a non-leaf, its predecessors are 
 --
---   Leaf:
---     Predecessor1 = most recent entry in Prefix1
+-- Non-leaf entries build up the MMR, so their predecessors are determined in
+-- the usual way within the same prefix:
+--
+--     Predecessor1 = RightChild(SequenceNo) = SequenceNo - 1
+--     Predecessor2 = LeftChild(SequenceNo)
+--
+-- Leaves don't typically have a predecessor in a Merkle Tree/MMR. We can thus
+-- exploit leaf entries to fix two problems uniquely introduced by this scheme:
+-- 1) ensuring timestamps are causal and monotonic; and 2) ensuring the set of
+--  partially correct for the issues introduced by
+-- splitting the tree into many prefixes. We do this by interlocking the leaf
+-- with the most recent entry in Prefix2.
+--
+--     Predecessor1 = most recent entry in Prefix1 = SequenceNo - 1
 --     Predecessor2 = most recent entry in Prefix2
 --
---   Non-leaf:
---     Predecessor1 = right child in Prefix1 (SequenceNo-1)
---     Predecessor2 = left child in Prefix1
+-- In either the leaf or non-leaf case, a Predecessor may not exist (if the
+-- prefix in question has no entries yet). In that case, the predecessor is just
+-- ignored.
 --
 -- RecordSHA3512 is determined by hashing in order:
 --
---   1) RecordSHA3512 of Predecessor1
---   2) RecordSHA3512 of Predecessor2
+--   1) RecordSHA3512 and Timestamp of Predecessor1, if exists
+--   2) RecordSHA3512 and Timestamp of Predecessor2, if exists
 --   3) DataSHA3512
---   4) Timestamp
 --
--- If a predecessor does not exist, it is omitted from the hash.
+-- Writing a new leaf requires consulting a different prefix chain which may
+-- reside in a different Spanner group. In a binary MMR, no more than half of
+-- all entries are leaves. We select Prefix2 above to be "close" to Prefix1
+-- in the key space. So for most (Prefix1, Prefix2) pairs, it is likely both
+-- prefixes can be accessed in the same Spanner group. Distributed transactions
+-- are thus only incurred for leaves whose prefixes straddle Spanner groups.
+-- These slow writes are distributed by hash prefix, not by user or region, so
+-- performance fairness is maintained. This is possibly the optimal arrangement
+-- given the requirement to interlock MMRs.
 --
--- Because Timestamp is included in this hash, RecordSHA3512 must be added to
--- the entry after the entry is initially written. This introduces a possibility
--- that some entries will not have a RecordSHA3512, if the writer fails between
--- the first and second write. However, RecordSHA3512 is entirely determined by
--- the other fields that are written on the first write: DataSHA3512, SequenceNo
--- (which decides predecessors) and Timestamp. So encountering an entry without
--- a RecordSHA3512 can be resolved by simply computing it at the time it is
--- needed and writing it to the entry.
---
--- DigestSHA3512 holds a rolling digest of the entire prefix chain (as an MMR)
+-- RollingSHA3512 holds a rolling hash of the entire prefix chain (as an MMR)
 -- as of the moment when that entry was added. It is determined by hashing in
 -- order:
 --
 --   1) RecordSHA3512 of all peaks to the left of the current entry, as computed
---      using the new entry's SequenceNo
+--      using the new entry's SequenceNo (there will typically be O(log2N) such
+--      peaks, e.g. 20 @ 1M entries).
 --   2) RecordSHA3512 of the new entry
---
--- As with RecordSHA3512, DigestSHA3512 is added on the second write. If an
--- entry does not receive its DigestSHA3512 when initially written, it can be
--- lazily added later.
---
--- RecordSHA3512 and DigestSHA3512 attached to old entries can be deleted to
--- save space.
 --
 -- --------------------------------------------
 -- Creating a digest of the full (regional) log
@@ -143,7 +193,7 @@
 --
 -- Creating digests makes heavy use of caching of the following entries:
 --
---   * The RecordSHA3512 of the peaks of a prefix chain
+--   * The RecordSHA3512 and Timestamp of the peaks of a prefix chain
 --     * older/taller peaks remain among an MMR's peaks for a long time
 --     * new tall peaks are known by the their SequenceNo, can be pre-emptively
 --       cached
@@ -166,21 +216,21 @@
 
 -- Write new values spread across prefixes, which requires also quickly looking
 -- up the most recent value to compute the new SequenceNo and recent and prior
--- values when computing DigestSHA3512.
+-- values when computing RollingSHA3512.
 CREATE TABLE Log (
-    Region                STRING(MAX) NOT NULL,
-    Prefix                BYTES(64) NOT NULL,
-    SequenceNo            INT64 NOT NULL,
-    DataSHA3512           BYTES(64) NOT NULL,
-    RecordSHA3512         BYTES(64),
-    DigestSHA3512         BYTES(64),
-    Timestamp             TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+    Region          STRING(MAX) NOT NULL,
+    Prefix          BYTES(64) NOT NULL,
+    SequenceNo      INT64 NOT NULL,
+    DataSHA3512     BYTES(64) NOT NULL,
+    RecordSHA3512   BYTES(64),
+    RollingSHA3512  BYTES(64),
+    Timestamp       TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (Region, Prefix, SequenceNo DESC);
 
 -- Memcache:
 --
---   (Region, Prefix, SequenceNo) --> RecordSHA3512
---   (Region, Prefix, SequenceNo) --> DigestSHA3512
+--   (Region, Prefix, SequenceNo) --> (RecordSHA3512, Timestamp)
+--   (Region, Prefix, SequenceNo) --> RollingSHA3512
 --   (Region, Timestamp) --> N:last_timestamp:hash
 
 -- Lookup by timestamp is done by simply reading in the past. No index needed.

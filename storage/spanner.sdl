@@ -1,0 +1,12 @@
+CREATE TABLE Log (
+    Region          STRING(MAX) NOT NULL,
+    Prefix          BYTES(64) NOT NULL,
+    SequenceNo      INT64 NOT NULL,
+    DataSHA3512     BYTES(64) NOT NULL,
+    RecordSHA3512   BYTES(64),
+    RollingSHA3512  BYTES(64),
+    Timestamp       TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
+) PRIMARY KEY (Region, Prefix, SequenceNo DESC);
+
+CREATE UNIQUE INDEX EntriesByDataSHA3512 ON Log (DataSHA3512)
+  STORING (Timestamp);

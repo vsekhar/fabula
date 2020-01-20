@@ -7,21 +7,22 @@ import (
 	"os"
 )
 
+var metadata string
+
 func main() {
-	http.HandleFunc("/", handler)
+	db := os.Getenv("DB")
+	if db == "" {
+		log.Fatal("no DB environment variable")
+	}
+
+	// Protocol versions
+	v1 := newServer(db)
+	http.Handle ("/v1/", v1)
+
+	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		log.Fatal("no PORT environment variable")
 	}
-	log.Printf("Listening on localhost:%s", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
-}
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	log.Print("Hello world received a request.")
-	target := os.Getenv("TARGET")
-	if target == "" {
-		target = "World"
-	}
-	fmt.Fprintf(w, "Hello %s!\n", target)
-}
+} 

@@ -5,4 +5,7 @@
     "[sql]": {
         "editor.rulers": [80],
     },
+    "[markdown]": {
+        "editor.rulers": [80],
+    },
 }

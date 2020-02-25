@@ -1,4 +1,7 @@
 {
+    "files.trimTrailingWhitespace": true,
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
     "files.associations": {
         "*.sdl": "sql",
     },
@@ -8,4 +11,7 @@
     "[markdown]": {
         "editor.rulers": [80],
     },
+    "[go]": {
+        "editor.rulers": [80],
+    }
 }

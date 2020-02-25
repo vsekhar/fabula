@@ -28,17 +28,15 @@ Following the time-based URL prefix, regions can be specified:
 
 `.../`: all regions (for digests)
 
-`.../regions/<region>`: a specific region
+`.../r/<region>`: a specific region
 
-`.../regions/auto`: region selected by infrastructure (used only when logging new entries or looking up a DataSHA3256 without specifying a region)
+`.../r/auto`: region selected by infrastructure (used only when logging a new entry or looking up a DataSHA3512 without specifying a region)
 
-`.../regions/global`: the global region (must be explicitly requested when logging)
+`.../r/global`: the global region (auto will never select the global region, it must be explicitly requested when logging a new entry)
 
 ### Logging
 
-`POST` requests can be sent to create a new log entry. Requests post no more than 64 bytes of user-defined binary data. The response includes `Region`, `DataSHA3512`, `Salt`, `Timestamp`, and `Signature`.
-
-`.../new`: new entry in the region as determined above.
+`.../new`: `POST` requests to this path create a new log entry. Requests post 0-64 bytes of user-defined binary data. The response includes `Region`, `DataSHA3512`, `Salt` (if >0 bytes of user data is provided), `Timestamp`, and `Signature`.
 
 POSTs redirect (via 303 See Other) to GETs on the canonical page for the new entry and that entry's timestamp.
 
@@ -46,21 +44,19 @@ POSTs are not idempotent (which is why they are not PUTs). Posting the same data
 
 ### Entries
 
-`.../hashes/<hash>`: Lookup a DataSHA3512 from anywhere (slower than a region-specific lookup); returns `Region`, `Timestamp`, and `Signature`.
+`.../e/<hash>`: Lookup a DataSHA3512, returns `Region`, `Timestamp`, and `Signature`. Looking up a DataSHA3512 with the correct region is faster than looking it up with the `auto` region.
 
-`.../hashes/<hash>/proof`: Inclusion proof of entry up to its region+prefix digest (as of the timestamp specified in the url). Returns `Region`, `Timestamp`, `Signature`, and pre- and post-entry hashes.
+`.../e/<hash>/proof`: Inclusion proof of entry up to its region+prefix digest (as of the timestamp specified in the url). Returns `Region`, `Timestamp`, `Signature`, and pre- and post-entry hashes.
 
 ### Digests
 
-Within time and region URLs described above, certain digests can be requested.
-
 `.../digests/`: Digest of all regions and prefix chains
 
-`.../prefixes/<prefix>`: Digest of a single prefix chain
+`.../p/<prefix>`: Digest of a single prefix chain
 
 Single prefix chains can be validated back to some timestamp in the past:
 
-`.../prefixes/<prefix>/proof/from/<prev_ts>`: Proof from <ts> to <prev_ts> of specified single prefix chain
+`.../p/<prefix>/proof/from/<prev_ts>`: Proof from <ts> to <prev_ts> of specified single prefix chain
 
 > TODO: How are these validated?
 
@@ -76,4 +72,4 @@ Single prefix chains can be validated back to some timestamp in the past:
 
 TBD.
 
-`.../prefixes/<prefix>/proof?from=<ts2>`: Proof hashes from ts to ts2 (TBD)
+`.../p/<prefix>/proof?from=<ts2>`: Proof hashes from ts to ts2 (TBD)

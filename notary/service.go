@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 	"io"
 
-	"github.com/vsekhar/COMMIT/internal/truetimeish"
+	"github.com/vsekhar/fabula/internal/truetimeish"
 )
 
 // TODO: Service may need to store salt and timestamps in order to validate

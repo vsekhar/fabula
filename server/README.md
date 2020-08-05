@@ -1,8 +1,8 @@
-# COMMIT Server
+# fabula Server
 
 ## URL scheme
 
-E.g. `https://commitlog.io/v1/at/123456/`: all regional/prefix digests as of `t=123456`
+E.g. `https://fabulalog.io/v1/at/123456/`: all regional/prefix digests as of `t=123456`
 
 `/`: Documentation
 

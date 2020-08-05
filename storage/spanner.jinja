@@ -1,10 +1,10 @@
 resources:
 - type: spanner.v1.instance
-  name: commitlog-{{ properties["env"] }}
+  name: fabulalog-{{ properties["env"] }}
   properties:
-    instanceId: commitlog-{{ properties["env"]  }}
+    instanceId: fabulalog-{{ properties["env"]  }}
     parent: projects/{{ env["project"] }}
     instance:
-      displayName: Commitlog Spanner
+      displayName: fabulalog Spanner
       config: projects/{{ env["project"] }}/instanceConfigs/{{ properties["instanceConfig"] }}
       nodeCount: {{ properties["nodeCount"] }}

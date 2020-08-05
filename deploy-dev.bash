@@ -2,7 +2,7 @@
 
 set -ex
 
-NAME=commitlog
+NAME=fabulalog
 ENV=dev
 
 PROJECT=$NAME-$ENV
@@ -13,8 +13,8 @@ SPANNER_DB=$NAME-$ENV
 DB_STRING=projects/$PROJECT/instances/$SPANNER_INSTANCE/databases/$SPANNER_DB
 
 # spanner
-gcloud deployment-manager deployments update commitlog-$ENV --config $ENV.yaml || \
-gcloud deployment-manager deployments create commitlog-$ENV --config $ENV.yaml
+gcloud deployment-manager deployments update fabulalog-$ENV --config $ENV.yaml || \
+gcloud deployment-manager deployments create fabulalog-$ENV --config $ENV.yaml
 
 gcloud spanner databases create $SPANNER_DB --instance=$SPANNER_INSTANCE || true
 

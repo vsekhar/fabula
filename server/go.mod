@@ -1,4 +1,4 @@
-module github.com/vsekhar/COMMIT/server
+module github.com/vsekhar/fabula/server
 
 go 1.13
 

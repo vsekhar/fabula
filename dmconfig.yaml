@@ -6,6 +6,5 @@ resources:
   - name: spanner
     type: spanner.jinja
     properties:
-      env: dev
       instanceConfig: regional-us-central1
       nodeCount: 1

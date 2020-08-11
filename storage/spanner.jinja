@@ -1,10 +1,10 @@
 resources:
 - type: spanner.v1.instance
-  name: fabulalog-{{ properties["env"] }}
+  name: fabula
   properties:
-    instanceId: fabulalog-{{ properties["env"]  }}
+    instanceId: fabula-spanner-instance
     parent: projects/{{ env["project"] }}
     instance:
-      displayName: fabulalog Spanner
+      displayName: Fabula Spanner Instance
       config: projects/{{ env["project"] }}/instanceConfigs/{{ properties["instanceConfig"] }}
       nodeCount: {{ properties["nodeCount"] }}

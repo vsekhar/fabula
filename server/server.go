@@ -13,10 +13,6 @@ import (
 	"cloud.google.com/go/spanner"
 )
 
-var regionMap map[string]string = map[string]string{
-	"us-central1": "NA",
-}
-
 type server struct {
 	spclient *spanner.Client
 	region   string

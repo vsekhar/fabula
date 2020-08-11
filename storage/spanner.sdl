@@ -1,16 +1,3 @@
--- Region = user specified or auto-detected
--- Salt = rand(64)
--- DataSHA3512 = hash(UserData, Salt) (if user data)
---               hash(Salt) (if no user data)
--- Prefix = DataSHA3512[:2]
--- CrossPrefix = append(DataSHA3512[:1], DataSHA3512[2:3])
--- Predecessor1 = Log(Region, Prefix, SequenceNo-1)
--- Predecessor2 = Log(Region, CrossPrefix, latest())         if leaf
---                Log(Region, Prefix, LeftChild(SequenceNo)  if non-leaf
--- NodeSHA3512 = hash(Predecessor1.NodeSHA3512, Predecessor1.Timestamp,
---                    Predecessor2.NodeSHA3512, Predecessor2.Timestamp,
---                    DataSHA3512)
--- Timestamp = spanner.commit_timestamp()
 CREATE TABLE Log (
   Region            STRING(MAX) NOT NULL,
   Prefix            BYTES(64) NOT NULL,
@@ -20,76 +7,5 @@ CREATE TABLE Log (
   Timestamp         TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
 ) PRIMARY KEY (Region, Prefix, SequenceNo DESC);
 
--- For user lookups. The index stores the Timestamp for efficient
--- reads-in-the-past of Log.
 CREATE UNIQUE INDEX EntriesByDataSHA3512 ON Log (DataSHA3512)
   STORING (Timestamp);
-
--- We don't want to support storing arbitrary data (a verifiable map), just
--- blind data about pending, resolved, aborted and expired decisions. So we only
--- serve semaphores.
-
--- User CREATE's a semaphore by submitting a 64-byte key and a duration. The
--- semaphore server submits the key and duration to the log as user_data. The
--- log returns a log entry DataSHA3512 and a Salt. The log entry binds the
--- user's key, the duration and the semaphore at a moment in time (its
--- creation), which also binds the semaphore to an expiry (creation+duration).
--- The semaphore server stores the Salt as the SemaphoreID. The semaphore server
--- returns the SemaphoreID, creation timestamp and expiry timestamp to the
--- user. The user can look up the creation log entry by hashing their key, the
--- duration and the SemaphoreID.
-
--- The user can share the SemaphoreID with Peers. A peer can in turn activate
--- the semaphore by generating a key of their own and calling the semaphore with
--- it. The semaphore server will submit their key and the SemaphoreID to the Log
--- as user data. The log returns a log entry DataSHA3512 and a Salt. The log
--- entry binds the peer's key and the semaphore at a moment in time. The
--- semaphore server checks if the log entry's timestamp is before the
--- semaphore's expiry time. If so, it stores and returns to the user the Salt as
--- the ActivationID. If not, it tells the user the semaphore is expired. The
--- peer can look up the activation log entry by hashing their key and the
--- SemaphoreID if successful. If the Semaphore is obviously expired, the server
--- can skip logging and refuse the activation.
-
--- Reading a semaphore, by SemaphoreID, provides a read timestamp, the
--- semaphore's creation time, expiry time, a list of ActivationIDs and their
--- timestamps.
-
--- Clients must generate, sign and share their keys as needed to provide
--- provability to all parties. In the normal case they will do so and close
--- whatever transaction they are negotiating between themselves.
-
--- If the decision to commit a
-
--- TODO: clients need a single place
-
--- To prove a Semaphore, it is necessary to have access to or provide all the
--- keys, the one used to create the Semaphore and the ones used to activate it.
--- It is up to clients to manage, sign and exchange keys.
-
--- Semaphores aren't sequenced, so we key them on Region for latency only and
--- let Spanner divide up the Semaphores table beyond that.
---
--- TODO: chaining semaphores?
-CREATE TABLE Semaphores (
-  Region      STRING(MAX) NOT NULL,
-  SemaphoreID BYTES(64) NOT NULL,
-  UserData    BYTES(64) NOT NULL,
-  Secret      BYTES(64) NOT NULL,
-  Duration    INT64 NOT NULL,
-  Expiry      TIMESTAMP NOT NULL,
-  Creation    TIMESTAMP NOT NULL OPTIONS (allow_commit_timestamp=true),
-) PRIMARY KEY (Region, SemaphoreID);
-
--- OLD: Tokens
-CREATE TABLE Tokens (
-  Region            STRING(MAX) NOT NULL,
-  SemaphoreID       BYTES(64) NOT NULL,
-  ResolveHash       BYTES(64) NOT NULL,
-  AbortHash         BYTES(64) NOT NULL,
-  Preimage          BYTES(64),
-) PRIMARY KEY (Region, SemaphoreID, TokenID),
-  INTERLEAVE IN PARENT Semaphores ON DELETE NO ACTION;
-
-CREATE UNIQUE INDEX UnusedTokens ON Tokens (Region, SemaphoreID, UseID)
-  STORING (TokenID) INTERLEAVE IN Decisions;

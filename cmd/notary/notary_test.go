@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/vsekhar/fabula/notary"
+	"github.com/vsekhar/fabula/cmd/notary"
 )
 
 func Example() {

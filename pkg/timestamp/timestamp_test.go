@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vsekhar/fabula/server/timestamp"
+	"github.com/vsekhar/fabula/pkg/timestamp"
 )
 
 var stringCases map[time.Time]string = map[time.Time]string{

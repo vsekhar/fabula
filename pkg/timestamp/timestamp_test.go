@@ -18,9 +18,6 @@ var stringCases map[time.Time]string = map[time.Time]string{
 	time.Date(1969, 12, 30, 0, 0, 0, 0, time.UTC):                        "-172800000000000",
 	time.Date(1720, 12, 30, 0, 0, 0, 0, time.UTC):                        "-7857820800000000000",
 	time.Date(2020, 8, 11, 18, 01, 34, 58982, time.FixedZone("test", 7)): "1597168887000058982",
-
-	// NB: time.Time.UnixNano() is undefined for dates outside 1678-2262:
-	// https://golang.org/pkg/time/#Time.UnixNano
 }
 
 func TestToString(t *testing.T) {

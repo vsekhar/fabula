@@ -1,12 +1,33 @@
 // Package timestamp handles converting time.Time values to unambiguous string
 // and byte representations.
+//
+// Package timestamp handles values roughly between 1678 and 2262, the time
+// range that can be represented as nanoseconds from the Unix epoch (1970)
+// within an int64. Timestamps for times/dates outside this range are
+// undefined.
 package timestamp
+
+// NB: time.Time.UnixNano() is undefined for dates outside 1678-2262:
+// https://golang.org/pkg/time/#Time.UnixNano
 
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
+)
+
+var (
+	// Earliest is the earliest time that can be converted into a timestamp.
+	// Converting times before Earliest into a Timestamp yields undefined
+	// behavior. This applies to the zero time.Time{}.
+	Earliest = time.Unix(0, math.MinInt64)
+
+	// Latest is the latest time that can be converted into a timestamp.
+	// Converting times before Earliest into a Timestamp yields undefined
+	// behavior.
+	Latest = time.Unix(0, math.MaxInt64)
 )
 
 // ToString encodes a time.Time object to a string containing an integer number

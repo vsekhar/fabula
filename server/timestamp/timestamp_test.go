@@ -19,10 +19,8 @@ var stringCases map[time.Time]string = map[time.Time]string{
 	time.Date(1720, 12, 30, 0, 0, 0, 0, time.UTC):                        "-7857820800000000000",
 	time.Date(2020, 8, 11, 18, 01, 34, 58982, time.FixedZone("test", 7)): "1597168887000058982",
 
-	// These don't work: https://github.com/golang/go/issues/40702
-	// "-6795364578871345151": time.Date(1, 1, 1, 0, 0, 0, 1, time.UTC),
-	// "-6795364578871345152": time.Time{},
-	// "-6795364578871245152": time.Time{}.Add(100 * time.Microsecond),
+	// NB: time.Time.UnixNano() is undefined for dates outside 1678-2262:
+	// https://golang.org/pkg/time/#Time.UnixNano
 }
 
 func TestToString(t *testing.T) {

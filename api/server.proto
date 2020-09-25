@@ -1,0 +1,17 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/pkg/api/serverpb";
+
+import "google/protobuf/timestamp.proto";
+
+message TimeRequest {
+}
+
+message TimeResponse {
+    google.protobuf.Timestamp timestamp = 1;
+}
+
+service Fabula {
+    rpc Time(TimeRequest) returns (TimeResponse) {}
+}

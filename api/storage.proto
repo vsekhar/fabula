@@ -1,0 +1,10 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/pkg/api/storagepb";
+
+import "google/protobuf/timestamp.proto";
+
+message EntryStorage {
+    google.protobuf.Timestamp timestamp = 1;
+}

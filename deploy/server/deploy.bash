@@ -4,6 +4,7 @@ set -ex
 
 NAME=fabula
 
+REPOROOT=$(git rev-parse --show-toplevel)
 PROJECT=$(gcloud config get-value project)
 SERVICE=$NAME
 IMAGE=$NAME-image
@@ -11,8 +12,8 @@ IMAGE=$NAME-image
 # TODO: GCS bucket
 
 # server in us-central1
-gcloud builds submit $(git rev-parse --show-toplevel) \
-    --config server/cloudbuild.yaml \
+gcloud builds submit $REPOROOT \
+    --config $REPOROOT/deploy/server/cloudbuild.yaml \
     --substitutions=_IMAGE="$IMAGE"
 
 gcloud run deploy $SERVICE \

@@ -2,8 +2,8 @@
 #
 #    deploy/server$ docker build --file Dockerfile ../../
 
-# FROM golang:1.13.6-buster as build
-FROM golang@sha256:93a56423351235e070b3630e0a8b3e27d5e868883d4dff591f676315f208a574 as builder
+# FROM golang:1.15.2-alpine amd64 as builder
+FROM golang@sha256:fc801399d044a8e01f125eeb5aa3f160a0d12d6e03ba17a1d0b22ce50dfede81 as builder
 
 # create non-root user from here (distroless/static doesn't have a shell)
 RUN addgroup fabulagroup

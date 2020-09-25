@@ -1,0 +1,8 @@
+# This is necessary in order to specify the non-standard location of the
+# Dockerfile.
+
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '--file', 'deploy/server/Dockerfile', '-t', 'gcr.io/$PROJECT_ID/$_IMAGE', '.']
+images:
+- 'gcr.io/$PROJECT_ID/$_IMAGE'

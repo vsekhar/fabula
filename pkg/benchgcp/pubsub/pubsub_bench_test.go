@@ -2,7 +2,6 @@ package pubsub
 
 import (
 	"context"
-	"crypto/rand"
 	"log"
 	"testing"
 	"time"
@@ -30,25 +29,9 @@ func newClientOrDie(ctx context.Context) *pubsub.Client {
 	return client
 }
 
-func startDrain(ctx context.Context, b *testing.B) {
-	client := newClientOrDie(ctx)
-	sub := client.Subscription(subscriptionName)
-	exists, err := sub.Exists(ctx)
-	if err != nil {
-		b.Fatal(err)
-	}
-	if !exists {
-		b.Fatalf("subscription does not exist: %s", subscriptionName)
-	}
-	go sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
-		msg.Ack()
-	})
-}
-
 func BenchmarkOrderedPublish(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	startDrain(ctx, b)
 
 	client := newClientOrDie(ctx)
 	topic := client.Topic(topicName)
@@ -62,11 +45,9 @@ func BenchmarkOrderedPublish(b *testing.B) {
 	var totalLatency time.Duration
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		var r [64]byte
-		rand.Read(r[:])
 		start := time.Now()
 		res := topic.Publish(ctx, &pubsub.Message{
-			Data:        r[:],
+			Data:        []byte("pubsub_bench_test"),
 			OrderingKey: "pubsub_bench_test",
 		})
 		_, err := res.Get(ctx)

@@ -21,8 +21,8 @@ func TestCases(t *testing.T) {
 		if ns := sortablebase64.EncodeUint64(n); ns != s {
 			t.Errorf("expected %s, got %s", s, ns)
 		}
-		if sn := sortablebase64.DecodeUint64(s); sn != n {
-			t.Errorf("expected %d, got %d", n, sn)
+		if sn, err := sortablebase64.DecodeUint64(s); sn != n || err != nil {
+			t.Errorf("expected %d, got %d (err: %s)", n, sn, err.Error())
 		}
 	}
 }
@@ -31,9 +31,9 @@ func TestSequence(t *testing.T) {
 	for i := 0; i < 63; i++ {
 		var n uint64 = 1 << i
 		ns := sortablebase64.EncodeUint64(n)
-		sn := sortablebase64.DecodeUint64(ns)
-		if sn != n {
-			t.Errorf("expected %d, got %d", n, sn)
+		sn, err := sortablebase64.DecodeUint64(ns)
+		if sn != n || err != nil {
+			t.Errorf("expected %d, got %d (err: %s)", n, sn, err.Error())
 		}
 	}
 }

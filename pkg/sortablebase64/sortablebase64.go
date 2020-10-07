@@ -5,6 +5,7 @@
 package sortablebase64
 
 import (
+	"fmt"
 	"log"
 	"strings"
 )
@@ -52,9 +53,9 @@ func EncodeUint64(n uint64) string {
 
 // DecodeUint64 returns a uint64 representing the sortablebase64-encoded string
 // s, or an error.
-func DecodeUint64(s string) uint64 {
+func DecodeUint64(s string) (uint64, error) {
 	if len(s) != 11 {
-		log.Fatalf("expected string of length 11, got string of length %d", len(s))
+		return 0, fmt.Errorf("sortablebase64: expected string of length 11, got string of length %d", len(s))
 	}
 	b := []byte(s)
 	var u uint64
@@ -65,7 +66,7 @@ func DecodeUint64(s string) uint64 {
 		}
 		u |= v << (60 - (i * 6))
 	}
-	return u
+	return u, nil
 }
 
 // Inc increments a sortablebase64 in string form without decoding the entire

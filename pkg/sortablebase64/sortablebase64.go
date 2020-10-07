@@ -1,7 +1,7 @@
 // Package sortablebase64 contains routines for encoding text in a variant of
 // base64. This variant has the useful property that encodings of numeric
-// values retain their ordering under lexicographic sort as the values do under
-// numeric sort.
+// values retain their ordering under lexicographic (ASCII) sort as the values
+// do under numeric sort.
 package sortablebase64
 
 import (
@@ -11,16 +11,16 @@ import (
 
 // Inspiration: https://www.codeproject.com/Articles/5165340/Sortable-Base64-Encoding
 
-const alphabet = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+const Alphabet = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 
 var decodeMap [256]byte
 
 func init() {
 	alphamap := make(map[rune]struct{})
-	for i, c := range alphabet {
+	for i, c := range Alphabet {
 		if i > 0 {
-			if alphabet[i-1] >= alphabet[i] {
-				log.Fatalf("bad alphabet order: %c < %c", alphabet[i], alphabet[i-1])
+			if Alphabet[i-1] >= Alphabet[i] {
+				log.Fatalf("bad alphabet order: %c < %c", Alphabet[i], Alphabet[i-1])
 			}
 		}
 		alphamap[c] = struct{}{}
@@ -32,8 +32,8 @@ func init() {
 	for i := 0; i < len(decodeMap); i++ {
 		decodeMap[i] = 0xFF
 	}
-	for i := 0; i < len(alphabet); i++ {
-		decodeMap[alphabet[i]] = byte(i)
+	for i := 0; i < len(Alphabet); i++ {
+		decodeMap[Alphabet[i]] = byte(i)
 	}
 }
 
@@ -43,21 +43,21 @@ func init() {
 func EncodeUint64(n uint64) string {
 	rb := strings.Builder{}
 
-	// Write little-endian
+	// Write big-endian
 	for i := 0; i < 11; i++ {
-		rb.WriteByte(alphabet[(n>>(60-(i*6)))&0x3F])
+		rb.WriteByte(Alphabet[(n>>(60-(i*6)))&0x3F])
 	}
 	/*
-		rb.WriteByte(alphabet[n>>56&0x3F])
-		rb.WriteByte(alphabet[n>>48&0x3F])
-		rb.WriteByte(alphabet[n>>42&0x3F])
-		rb.WriteByte(alphabet[n>>36&0x3F])
-		rb.WriteByte(alphabet[n>>30&0x3F])
-		rb.WriteByte(alphabet[n>>24&0x3F])
-		rb.WriteByte(alphabet[n>>18&0x3F])
-		rb.WriteByte(alphabet[n>>12&0x3F])
-		rb.WriteByte(alphabet[n>>6&0x3F])
-		rb.WriteByte(alphabet[n&0x3F]) // LSB
+		rb.WriteByte(Alphabet[n>>56&0x3F])
+		rb.WriteByte(Alphabet[n>>48&0x3F])
+		rb.WriteByte(Alphabet[n>>42&0x3F])
+		rb.WriteByte(Alphabet[n>>36&0x3F])
+		rb.WriteByte(Alphabet[n>>30&0x3F])
+		rb.WriteByte(Alphabet[n>>24&0x3F])
+		rb.WriteByte(Alphabet[n>>18&0x3F])
+		rb.WriteByte(Alphabet[n>>12&0x3F])
+		rb.WriteByte(Alphabet[n>>6&0x3F])
+		rb.WriteByte(Alphabet[n&0x3F]) // LSB
 	*/
 	return rb.String()
 }
@@ -97,12 +97,12 @@ func Inc(s string) string {
 			log.Fatalf("illegal character at pos %d in '%s'", i, s)
 		}
 		if inc {
-			v = (v + 1) % len(alphabet)
+			v = (v + 1) % len(Alphabet)
 			if v != 0 {
 				inc = false
 			}
 		}
-		rb[i] = alphabet[v]
+		rb[i] = Alphabet[v]
 	}
 	if inc == true {
 		panic("overflow")
@@ -126,13 +126,13 @@ func Dec(s string) string {
 		}
 		if dec {
 			if v == 0 {
-				v = len(alphabet) - 1
+				v = len(Alphabet) - 1
 			} else {
 				v = v - 1
 				dec = false
 			}
 		}
-		rb[i] = alphabet[v]
+		rb[i] = Alphabet[v]
 	}
 	if dec == true {
 		panic("underflow")

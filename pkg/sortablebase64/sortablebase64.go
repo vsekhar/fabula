@@ -11,6 +11,8 @@ import (
 
 // Inspiration: https://www.codeproject.com/Articles/5165340/Sortable-Base64-Encoding
 
+// Alphabet is an ordered list of characters used in sortablebase64 encoding.
+// The order is drawn from the placement of these characters in the ASCII table.
 const Alphabet = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 
 var decodeMap [256]byte

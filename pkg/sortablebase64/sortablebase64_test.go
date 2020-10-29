@@ -49,11 +49,11 @@ func TestSortable(t *testing.T) {
 			if !(s[i-1] < s[i]) {
 				t.Errorf("bad ordering: %s >= %s", s[i-1], s[i])
 			}
-			if next := sortablebase64.Inc(s[i-1]); next != s[i] {
-				t.Errorf("failed to increment %s to %s, got %s", s[i-1], s[i], next)
+			if next, err := sortablebase64.IncUint64(s[i-1]); next != s[i] {
+				t.Errorf("failed to increment %s to %s, got %s (err: %s)", s[i-1], s[i], next, err)
 			}
-			if prev := sortablebase64.Dec(s[i]); prev != s[i-1] {
-				t.Errorf("failed to decrement %s to %s, got %s", s[i], s[i-1], prev)
+			if prev, err := sortablebase64.DecUint64(s[i]); prev != s[i-1] || err != nil {
+				t.Errorf("failed to decrement %s to %s, got %s (err: %s)", s[i], s[i-1], prev, err)
 			}
 		}
 	}

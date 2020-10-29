@@ -69,60 +69,20 @@ func DecodeUint64(s string) (uint64, error) {
 	return u, nil
 }
 
-// Inc increments a sortablebase64 in string form without decoding the entire
-// value.
-func Inc(s string) string {
-	if len(s) != 11 {
-		log.Fatalf("expected string of length 11, got string of length %d", len(s))
+// IncUint64 increments the sortablebase64-encoded uint64 s.
+func IncUint64(s string) (string, error) {
+	u, err := DecodeUint64(s)
+	if err != nil {
+		return "", err
 	}
-	b := []byte(s)
-	rb := make([]byte, len(b))
-	inc := true
-	for i := 10; i >= 0; i-- {
-		v := int(decodeMap[b[i]])
-		if v == 0xFF {
-			log.Fatalf("illegal character at pos %d in '%s'", i, s)
-		}
-		if inc {
-			v = (v + 1) % len(Alphabet)
-			if v != 0 {
-				inc = false
-			}
-		}
-		rb[i] = Alphabet[v]
-	}
-	if inc == true {
-		panic("overflow")
-	}
-	return string(rb)
+	return EncodeUint64(u + 1), nil
 }
 
-// Dec decrements a sortablebase64 in string form without decoding the entire
-// value.
-func Dec(s string) string {
-	if len(s) != 11 {
-		log.Fatalf("expected string of length 11, got string of length %d", len(s))
+// DecUint64 increments the sortablebase64-encoded uint64 s.
+func DecUint64(s string) (string, error) {
+	u, err := DecodeUint64(s)
+	if err != nil {
+		return "", err
 	}
-	b := []byte(s)
-	rb := make([]byte, len(b))
-	dec := true
-	for i := 10; i >= 0; i-- {
-		v := int(decodeMap[b[i]])
-		if v == 0xFF {
-			log.Fatalf("illegal character at pos %d in '%s'", i, s)
-		}
-		if dec {
-			if v == 0 {
-				v = len(Alphabet) - 1
-			} else {
-				v = v - 1
-				dec = false
-			}
-		}
-		rb[i] = Alphabet[v]
-	}
-	if dec == true {
-		panic("underflow")
-	}
-	return string(rb)
+	return EncodeUint64(u - 1), nil
 }

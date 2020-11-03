@@ -72,6 +72,16 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
 					{Dir: reflect.SelectRecv, Chan: r.valueCh},
 				})
+				switch chosen {
+				case 0:
+					return
+				case 1:
+					handlerRunning = false
+				case 2:
+					accumBuf = reflect.Append(accumBuf, val)
+				default:
+					panic("select error")
+				}
 			} else {
 				// Exclude receive case if the buffer is full. This will cause
 				// calls to Add to block, and calls to AddNoWait to return false.
@@ -79,17 +89,16 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
 					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
 				})
+				switch chosen {
+				case 0:
+					return
+				case 1:
+					handlerRunning = false
+				default:
+					panic("select error")
+				}
 			}
-			switch chosen {
-			case 0:
-				return
-			case 1:
-				handlerRunning = false
-			case 2:
-				accumBuf = reflect.Append(accumBuf, val)
-			default:
-				panic("select error")
-			}
+
 			if accumBuf.Len() > 0 && !handlerRunning {
 				accumBuf, handlerBuf = handlerBuf, accumBuf
 				accumBuf = accumBuf.Slice(0, 0)

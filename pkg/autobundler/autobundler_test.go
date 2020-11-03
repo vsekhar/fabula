@@ -102,7 +102,7 @@ func TestAutoBundler(t *testing.T) {
 			go addValues(ctx, tc.rate, a)
 			time.Sleep(5 * time.Second)
 			cancel()
-			a.wg.Wait()
+			a.Wait()
 			eb := expectedBundle(tc.rate, tc.fixed, tc.variable)
 			if eb < 0 {
 				// pathalogical, will grow to max

@@ -18,11 +18,10 @@ import (
 
 // AutoBundler manages
 type AutoBundler struct {
-	max        int
-	valueCh    reflect.Value // chan T
-	handler    func(context.Context, interface{})
-	handlerCtx context.Context
-	wg         sync.WaitGroup
+	max     int
+	valueCh reflect.Value // chan T
+	ctx     context.Context
+	wg      sync.WaitGroup
 }
 
 // New returns a new AutoBundler.
@@ -47,14 +46,17 @@ type AutoBundler struct {
 // is reasonable.
 //
 // The context ctx will be passed to the handler. If ctx is cancelled, no future
-// handler invocations will occur.
+// handler invocations will occur and the autobundler will stop handling
+// buffered and new values. There is no way to safely "flush" an autobundler.
+// Applications should be resilient to losing values buffered in the autobundler
+// if the context is cancelled. In other words, context cancellation is treated
+// like termination of the program from the point of view of the autobundler.
 func New(ctx context.Context, itemExample interface{}, handler func(ctx context.Context, v interface{}), max int) *AutoBundler {
 	valueCh := reflect.MakeChan(reflect.ChanOf(reflect.BothDir, reflect.TypeOf(itemExample)), 0)
 	r := &AutoBundler{
-		max:        max,
-		valueCh:    valueCh,
-		handler:    handler,
-		handlerCtx: ctx,
+		max:     max,
+		valueCh: valueCh,
+		ctx:     ctx,
 	}
 	r.wg.Add(1)
 	go func() {
@@ -104,7 +106,7 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 				accumBuf = accumBuf.Slice(0, 0)
 				handlerCh = make(chan struct{})
 				go func() {
-					r.handler(ctx, handlerBuf.Interface())
+					handler(ctx, handlerBuf.Interface())
 					close(handlerCh)
 				}()
 				handlerRunning = true
@@ -118,7 +120,11 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 //
 // It is safe to call Add from multiple goroutines.
 func (a *AutoBundler) Add(item interface{}) {
-	a.valueCh.Send(reflect.ValueOf(item))
+	cases := []reflect.SelectCase{
+		{Dir: reflect.SelectSend, Chan: a.valueCh, Send: reflect.ValueOf(item)},
+		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(a.ctx.Done())},
+	}
+	reflect.Select(cases)
 }
 
 // AddNoWait tries to add an item to the current bundler. If successful, it
@@ -139,4 +145,10 @@ func (a *AutoBundler) AddNoWait(item interface{}) bool {
 	default:
 		panic("select error")
 	}
+}
+
+// Wait blocks until the autobundler has stopped. The autobundler will stop when
+// the context passed to New is cancelled.
+func (a *AutoBundler) Wait() {
+	a.wg.Wait()
 }

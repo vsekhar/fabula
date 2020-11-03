@@ -2,8 +2,8 @@
 //
 // Autobundler tries to minimize the latency between when a value arrives and
 // when it is handled. At steady state, autobundler will buffer incoming values
-// while an invocation of the handler is running, and starting a new invocation
-// with the next bundle of values as soon as the first invocation finishes.
+// while an invocation of the handler is running, starting a new invocation with
+// the next bundle of values as soon as the first invocation finishes.
 package autobundler
 
 import (
@@ -38,7 +38,9 @@ type AutoBundler struct {
 // The AutoBundler will only buffer max values, after which calls to Add will
 // block until the bundle is submitted to the handler. Call AddNoWait if you
 // want to detect if the buffer is full. Setting a reasonable max provides a
-// way to apply backpressure to upstream producers).
+// way to apply backpressure to upstream producers. For handlers that are not
+// CPU constrained (e.g. which write bundles to remote storage), a max of 1000
+// is reasonable.
 //
 // The context ctx will be passed to the handler. If ctx is cancelled, no future
 // handler invocations will occur.
@@ -58,19 +60,22 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 		var handlerCh chan struct{}
 		handlerRunning := false
 		for {
-			casesWithSpace := []reflect.SelectCase{
-				{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
-				{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
-				{Dir: reflect.SelectRecv, Chan: r.valueCh},
-			}
-			casesWithoutSpace := casesWithSpace[:2]
-			var cases []reflect.SelectCase
+			var chosen int
+			var val reflect.Value
 			if accumBuf.Len() < max {
-				cases = casesWithSpace
+				chosen, val, _ = reflect.Select([]reflect.SelectCase{
+					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
+					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
+					{Dir: reflect.SelectRecv, Chan: r.valueCh},
+				})
 			} else {
-				cases = casesWithoutSpace
+				// Exclude receive case if the buffer is full. This will cause
+				// calls to Add to block, and calls to AddNoWait to return false.
+				chosen, val, _ = reflect.Select([]reflect.SelectCase{
+					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
+					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
+				})
 			}
-			chosen, val, _ := reflect.Select(cases)
 			switch chosen {
 			case 0:
 				return

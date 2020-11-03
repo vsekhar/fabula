@@ -1,9 +1,13 @@
 // Package autobundler provides an automatic bundler for a stream of values.
 //
-// Autobundler tries to minimize the latency between when a value arrives and
-// when it is handled. At steady state, autobundler will buffer incoming values
-// while an invocation of the handler is running, starting a new invocation with
-// the next bundle of values as soon as the first invocation finishes.
+// Unlike `google.golang.org/api/support/bundler`, package autobundler does not
+// require setting timeouts or thresholds.
+//
+// Instead, Autobundler tries to minimize the latency between when a value
+// arrives and when it is handled. At steady state, autobundler will buffer
+// incoming values while an invocation of the handler is running, starting a new
+// invocation with the next bundle of values as soon as the prior invocation
+// finishes.
 package autobundler
 
 import (

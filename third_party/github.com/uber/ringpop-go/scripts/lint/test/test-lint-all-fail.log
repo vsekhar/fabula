@@ -1,3 +1,0 @@
-./swim/disseminator.go:107: range var member copies Lock: swim.Member
-./swim/memberlist.go:128: Pingable passes Lock by value: swim.Member
-./swim/stats_test.go:101: range var member copies Lock: swim.Member

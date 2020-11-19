@@ -18,15 +18,10 @@ func sleep(ctx context.Context, d time.Duration) {
 // addValues adds r random integer values per second to autobundler a until the
 // context is cancelled.
 func addValues(ctx context.Context, r int, a *AutoBundler) {
+	interval := time.Duration(float64(time.Second) / float64(r))
 	for i := 0; true; i++ {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			a.Add(i)
-			interval := time.Duration(float64(time.Second) / float64(r))
-			sleep(ctx, interval)
-		}
+		a.Add(ctx, i)
+		sleep(ctx, interval)
 	}
 }
 
@@ -58,21 +53,27 @@ var cases []testCase = []testCase{
 	// input rate(/s), fixed time, variable time, max buffer
 	{4, 1 * time.Millisecond, 2 * time.Millisecond, 100},
 
-	// Semi-realistic for writing to cloud storage, varying input and max
-	{1, 70 * time.Millisecond, 1 * time.Millisecond, 100},
-	{10, 70 * time.Millisecond, 1 * time.Millisecond, 100},
-	{100, 70 * time.Millisecond, 1 * time.Millisecond, 100},
-	{100, 70 * time.Millisecond, 1 * time.Millisecond, 1000},
+	// Cloud storage has ~300ms roundtrip time to write an object.
+	// Sha3512 benchmarks at 1244ns/op.
+	// Transferring 64 bytes @ 100MB/s takes 640ns/op.
+	// Some sundry memory copying at 1XXns/op.
+	// = 300ms + 2us/op
+	{1, 300 * time.Millisecond, 2 * time.Microsecond, 100},
+	{10, 300 * time.Millisecond, 2 * time.Microsecond, 100},
+	{100, 300 * time.Millisecond, 2 * time.Microsecond, 100},
+	{100, 300 * time.Millisecond, 2 * time.Microsecond, 1000},
+	{500, 300 * time.Millisecond, 2 * time.Microsecond, 1000},
+	{10000, 300 * time.Millisecond, 2 * time.Microsecond, 10},
 
-	// TODO: this always undershoots, bundle size 59, expected 70
-	// {500, 70 * time.Millisecond, 1 * time.Millisecond, 1000},
-
-	// Pathalogical (bundle size will grow to max)
+	// cannot reach steady state with 5s settleTime
 	// {100, 100 * time.Millisecond, 200 * time.Millisecond, 100},
 	// {100, 100 * time.Millisecond, 200 * time.Millisecond, 1000},
+	// {10000, 300 * time.Millisecond, 2 * time.Microsecond, 10000},
 }
 
 func TestAutoBundler(t *testing.T) {
+	const settleTime = 5 * time.Second
+
 	for i, tc := range cases {
 		tc, caseNo := tc, i // capture vars
 		name := fmt.Sprintf("fix:%s,var:%s,max:%d", tc.fixed, tc.variable, tc.max)
@@ -100,12 +101,12 @@ func TestAutoBundler(t *testing.T) {
 
 			a := New(ctx, int(0), handler, tc.max)
 			go addValues(ctx, tc.rate, a)
-			time.Sleep(5 * time.Second)
+			time.Sleep(settleTime)
 			cancel()
 			a.Wait()
 			eb := expectedBundle(tc.rate, tc.fixed, tc.variable)
 			if eb < 0 {
-				// pathalogical, will grow to max
+				// pathalogical, will grow to max and then apply back pressure
 				eb = tc.max
 			}
 			if eb < 1 {

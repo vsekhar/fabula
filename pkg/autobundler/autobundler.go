@@ -61,50 +61,49 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		nilSlice := reflect.Zero(reflect.SliceOf(reflect.TypeOf(itemExample)))
-		accumBuf, handlerBuf := nilSlice, nilSlice
+		typ := reflect.TypeOf(itemExample)
+		nilSlice := reflect.Zero(reflect.SliceOf(typ))
+		buf := nilSlice
 		var handlerCh chan struct{}
 		handlerRunning := false
+		allCases := []reflect.SelectCase{
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
+			{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
+			{Dir: reflect.SelectRecv, Chan: r.valueCh}, // add new value
+		}
 		for {
 			var chosen int
 			var val reflect.Value
-			if accumBuf.Len() < max {
-				chosen, val, _ = reflect.Select([]reflect.SelectCase{
-					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
-					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
-					{Dir: reflect.SelectRecv, Chan: r.valueCh},
-				})
-				switch chosen {
-				case 0:
-					return
-				case 1:
-					handlerRunning = false
-				case 2:
-					accumBuf = reflect.Append(accumBuf, val)
-				default:
-					panic("select error")
-				}
-			} else {
+			cases := allCases
+			if buf.Len() >= max {
 				// Exclude receive case if the buffer is full. This will cause
 				// calls to Add to block, and calls to AddNoWait to return false.
-				chosen, val, _ = reflect.Select([]reflect.SelectCase{
-					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
-					{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(handlerCh)},
-				})
-				switch chosen {
-				case 0:
-					return
-				case 1:
-					handlerRunning = false
-				default:
-					panic("select error")
+				cases = cases[:2]
+			}
+			chosen, val, _ = reflect.Select(cases)
+			switch chosen {
+			case 0:
+				// <-ctx.Done()
+				if handlerRunning {
+					<-handlerCh
 				}
+				return
+			case 1:
+				// <-handlerCh
+				handlerRunning = false
+			case 2:
+				// val = <-valueCh
+				buf = reflect.Append(buf, val)
+			default:
+				panic("select error")
 			}
 
-			if accumBuf.Len() > 0 && !handlerRunning {
-				accumBuf, handlerBuf = handlerBuf, accumBuf
-				accumBuf = accumBuf.Slice(0, 0)
+			if buf.Len() > 0 && !handlerRunning {
+				handlerBuf := buf
+				// pre-allocate length of last slice
+				buf = reflect.MakeSlice(reflect.SliceOf(typ), 0, handlerBuf.Len())
 				handlerCh = make(chan struct{})
+				cases[1].Chan = reflect.ValueOf(handlerCh)
 				go func() {
 					handler(ctx, handlerBuf.Interface())
 					close(handlerCh)
@@ -119,10 +118,11 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 // Add adds item to the current bundler.
 //
 // It is safe to call Add from multiple goroutines.
-func (a *AutoBundler) Add(item interface{}) {
+func (a *AutoBundler) Add(ctx context.Context, item interface{}) {
 	cases := []reflect.SelectCase{
 		{Dir: reflect.SelectSend, Chan: a.valueCh, Send: reflect.ValueOf(item)},
 		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(a.ctx.Done())},
+		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
 	}
 	reflect.Select(cases)
 }

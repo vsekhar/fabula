@@ -41,13 +41,14 @@ func TestCombineRand(t *testing.T) {
 func TestGCSCompose(t *testing.T) {
 	const poly = crc32.Castagnoli // per GCS
 
-	// https://github.com/googleapis/googleapis/blob/6ae2d424245deeb34cf73c4f7aba31f1079bcc40/google/api/annotations.proto
-	// gsutil hash annotations.proto
+	//  $ wget https://github.com/googleapis/googleapis/blob/6ae2d424245deeb34cf73c4f7aba31f1079bcc40/google/api/annotations.proto
+	//  $ gsutil hash annotations.proto
 	a, _ := base64.StdEncoding.DecodeString("Oa2A2A==")
 
-	// https://github.com/googleapis/googleapis/blob/ca1372c6d7bcb199638ebfdb40d2b2660bab7b88/google/api/http.proto
-	// gsutil hash http.proto
-	b, _ := base64.StdEncoding.DecodeString("A1kEDg==") // len = 15140
+	//  $ wget https://github.com/googleapis/googleapis/blob/ca1372c6d7bcb199638ebfdb40d2b2660bab7b88/google/api/http.proto
+	//  $ gsutil hash http.proto
+	b, _ := base64.StdEncoding.DecodeString("A1kEDg==")
+	blen := 15140
 
 	// cat annotations.proto http.proto > combined.proto
 	// gsutil hash combined.proto
@@ -56,8 +57,25 @@ func TestGCSCompose(t *testing.T) {
 	ai := binary.BigEndian.Uint32(a)
 	bi := binary.BigEndian.Uint32(b)
 	ci := binary.BigEndian.Uint32(c)
-	ec := crc32combine.Combine(ai, bi, 15140, poly)
-	if ec != ci {
-		t.Errorf("got %d, expected %d", ci, ec)
+	got := crc32combine.Combine(ai, bi, blen, poly)
+	if got != ci {
+		t.Errorf("got %d, expected %d", got, ci)
+	}
+}
+
+func BenchmarkCompose(b *testing.B) {
+	const poly = crc32.Castagnoli
+
+	// from above
+	ai := uint32(967672024)
+	bi := uint32(56165390)
+	blen := 15140
+	ci := uint32(2896907790)
+
+	for i := 0; i < b.N; i++ {
+		got := crc32combine.Combine(ai, bi, blen, poly)
+		if got != ci {
+			b.Fatalf("got %d, expected %d", got, ci)
+		}
 	}
 }

@@ -17,7 +17,7 @@ ENV GOOS=linux
 ENV GOARCH=amd64
 ADD go.mod /app
 ADD go.sum /app
-RUN go mod download
+# RUN go mod download
 # RUN go mod verify
 
 # build app

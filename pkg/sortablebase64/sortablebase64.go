@@ -6,7 +6,6 @@ package sortablebase64
 
 import (
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -23,7 +22,7 @@ func init() {
 	for i, c := range Alphabet {
 		if i > 0 {
 			if Alphabet[i-1] >= Alphabet[i] {
-				log.Fatalf("bad alphabet order: %c < %c", Alphabet[i], Alphabet[i-1])
+				panic(fmt.Sprintf("bad alphabet order: %c < %c", Alphabet[i], Alphabet[i-1]))
 			}
 		}
 		alphamap[c] = struct{}{}
@@ -62,7 +61,7 @@ func DecodeUint64(s string) (uint64, error) {
 	for i := 0; i < 11; i++ {
 		v := uint64(decodeMap[b[i]])
 		if v == 0xFF {
-			log.Fatalf("illegal character at pos %d in '%s'", i, s)
+			return 0, fmt.Errorf("illegal character at pos %d in '%s'", i, s)
 		}
 		u |= v << (60 - (i * 6))
 	}

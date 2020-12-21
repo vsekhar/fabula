@@ -51,8 +51,8 @@ resource "google_container_node_pool" "fabula_preemptible_nodes" {
     }
 
     autoscaling {
-        min_node_count = 1
-        max_node_count = 3 // TODO: adjust
+        min_node_count = 1 // per region (3 total)
+        max_node_count = 4 // 12 total
     }
 
     management {
@@ -62,7 +62,7 @@ resource "google_container_node_pool" "fabula_preemptible_nodes" {
 
     node_config {
         preemptible = true
-        machine_type = "e2-standard-2"
+        machine_type = "f1-micro"
         tags = [
             "gke-node",
             "${var.project_id}-gke",
@@ -103,7 +103,6 @@ resource "google_service_account_iam_binding" "workload_identity" {
     service_account_id = google_service_account.fabula.name
     role = "roles/iam.workloadIdentityUser"
     members = [
-        // "serviceAccount:${var.project_id}.svc.id.goog[${kubernetes_service_account.fabula.id}]"
         "serviceAccount:${var.project_id}.svc.id.goog[${module.fabula_kubernetes.kubernetes_service_account_id}]"
     ]
 }

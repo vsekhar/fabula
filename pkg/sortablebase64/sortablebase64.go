@@ -13,7 +13,7 @@ import (
 
 // Alphabet is an ordered list of characters used in sortablebase64 encoding.
 // The order is drawn from the placement of these characters in the ASCII table.
-const Alphabet = "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+const Alphabet = "0123456789=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 
 var decodeMap [256]byte
 

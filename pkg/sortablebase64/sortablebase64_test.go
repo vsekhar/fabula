@@ -7,12 +7,12 @@ import (
 )
 
 var cases = map[string]uint64{
-	"-----------": 0,
-	"----------0": 1,
-	"----------1": 2,
-	"----------e": 42,
-	"---------0-": 64,
-	"------1usyG": 48992145,
+	"00000000000": 0,
+	"00000000001": 1,
+	"00000000002": 2,
+	"0000000000e": 42,
+	"00000000010": 64,
+	"0000002usyG": 48992145,
 	"Ezzzzzzzzzz": 1<<64 - 1,
 }
 
@@ -22,7 +22,7 @@ func TestCases(t *testing.T) {
 			t.Errorf("expected %s, got %s", s, ns)
 		}
 		if sn, err := sortablebase64.DecodeUint64(s); sn != n || err != nil {
-			t.Errorf("expected %d, got %d (err: %s)", n, sn, err.Error())
+			t.Errorf("expected %d, got %d (err: %v)", n, sn, err)
 		}
 	}
 }
@@ -33,7 +33,7 @@ func TestSequence(t *testing.T) {
 		ns := sortablebase64.EncodeUint64(n)
 		sn, err := sortablebase64.DecodeUint64(ns)
 		if sn != n || err != nil {
-			t.Errorf("expected %d, got %d (err: %s)", n, sn, err.Error())
+			t.Errorf("expected %d, got %d (err: %v)", n, sn, err)
 		}
 	}
 }

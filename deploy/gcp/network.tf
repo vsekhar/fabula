@@ -10,15 +10,3 @@ resource "google_compute_subnetwork" "subnet" {
   ip_cidr_range = "10.10.0.0/24"
 
 }
-
-resource "google_compute_firewall" "fabula" {
-  name = "fabula-firewall"
-  network = google_compute_network.vpc.name
-  allow {
-    protocol = "icmp" // ping
-  }
-  allow {
-    protocol = "tcp"
-    ports = ["80"]
-  }
-}

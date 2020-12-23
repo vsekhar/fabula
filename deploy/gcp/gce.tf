@@ -12,7 +12,18 @@ data "google_compute_image" "cos" {
 data "template_file" "gce_cos_yaml" {
     template = file("${path.module}/gce_cos.tmpl.yaml")
     vars = {
-        container_image_name = data.google_container_registry_image.fabula.image_url
+        // container_image_name = data.google_container_registry_image.fabula.image_url
+        container_image_name = "nginx"
+    }
+}
+
+data "template_file" "gce_cos_cloud_init_yaml" {
+    template = file("${path.module}/gce_cloud-init.tmpl.yaml")
+    vars = {
+        service_name = "fabula"
+        // container_image_name = data.google_container_registry_image.fabula.image_url
+        container_image_name = "nginx"
+        project_id = var.project_id // for logging
     }
 }
 
@@ -31,16 +42,22 @@ resource "google_compute_instance_template" "fabula" {
     }
     metadata = {
         // TODO: try with cloud-init
+        // gce-container-declaration = data.template_file.gce_cos_yaml.rendered
+        user-data = data.template_file.gce_cos_cloud_init_yaml.rendered
+
         // TODO: start stackdriver logging agent? https://stackoverflow.com/a/58722803/608382
-        gce-container-declaration = data.template_file.gce_cos_yaml.rendered
         google-logging-enabled = "true"
+        google-monitoring-enabled = "true"
         enable-oslogin = "true"
         cos-metrics-enabled = "true"
+
     }
 
     network_interface {
         network = google_compute_network.vpc.self_link
         subnetwork = google_compute_subnetwork.subnet.self_link
+
+        # TODO: remove this once forwarding rule works
         access_config {
             network_tier = "PREMIUM"
         }
@@ -79,5 +96,52 @@ resource "google_compute_forwarding_rule" "fabula" {
     name = "fabula-forwarding-rule"
     region = module.regions.gce_region
     target = google_compute_target_pool.fabula.id
-    // port_range = "80"
+    port_range = "80"
+}
+
+resource "google_compute_firewall" "fabula-allow-external" {
+  lifecycle {
+    create_before_destroy = true
+  }
+  name = "fabula-allow-external"
+  network = google_compute_network.vpc.name
+  allow {
+    protocol = "icmp" // ping
+  }
+  allow {
+    protocol = "tcp"
+    ports = ["80", "8080"]
+  }
+}
+
+resource "google_compute_firewall" "fabula-allow-internal" {
+  lifecycle {
+    create_before_destroy = true
+  }
+  name = "fabula-allow-internal"
+  network = google_compute_network.vpc.name
+  source_ranges = [ "10.128.0.0/9" ]
+  allow {
+    protocol = "icmp"
+  }
+  allow {
+    protocol = "tcp"
+  }
+  allow {
+    protocol = "udp"
+  }
+}
+
+resource "google_compute_firewall" "fabula_allow_ssh_from_iap" {
+    lifecycle {
+        create_before_destroy = true
+    }
+    name = "fabula-allow-ssh-from-iap"
+    network = google_compute_network.vpc.name
+    source_ranges = ["35.235.240.0/20"]
+    direction = "INGRESS"
+    allow {
+        protocol = "tcp"
+        ports =["22"]
+    }
 }

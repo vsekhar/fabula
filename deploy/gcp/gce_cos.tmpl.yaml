@@ -1,7 +1,7 @@
 spec:
   containers:
   - name: fabula-container
-    image: nginx # ${container_image_name}
+    image: ${container_image_name}
     stdin: false
     tty: false # prevents ssh
     restartPolicy: Always

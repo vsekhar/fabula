@@ -17,7 +17,7 @@ resource "google_project_iam_binding" "fabula_esp_service_controller" {
 }
 
 data "template_file" "endpoint_yaml" {
-    template = file("${path.module}/fabula.yml.tmpl")
+    template = file("${path.module}/endpoints.tmpl.yaml")
     vars = {
         project_id = var.project_id
     }

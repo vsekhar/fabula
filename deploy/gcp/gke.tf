@@ -94,7 +94,7 @@ module "fabula_kubernetes" {
     }
 
     service_account_email = google_service_account.fabula.email
-    storage_bucket_name = google_storage_bucket.pack_storage.name
+    storage_bucket_name = data.terraform_remote_state.bucket.outputs.pack_storage_name
     endpoints_service_name = google_endpoints_service.grpc_service.service_name
     fabula_image = data.google_container_registry_image.fabula.image_url
 }

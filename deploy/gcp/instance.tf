@@ -44,10 +44,8 @@ resource "google_compute_instance_template" "fabula" {
         network = google_compute_network.vpc.self_link
         subnetwork = google_compute_subnetwork.subnet.self_link
 
-        # TODO: remove this once forwarding rule works
-        access_config {
-            network_tier = "PREMIUM"
-        }
+        // Add this to provide direct access to instances via an ephemeral IP
+        // access_config { network_tier = "PREMIUM" }
     }
 
     scheduling {

@@ -6,19 +6,6 @@ users:
 
 write_files:
 
-#  # https://cloud.google.com/community/tutorials/docker-gcplogs-driver
-#- path: /etc/docker/daemon.json
-#  permissions: 0644
-#  owner: root
-#  content: |
-#    {
-#      "log-driver": "gcplogs",
-#      "log-opts": {
-#        "gcp-project": "${project_id}",
-#        "env": "host",
-#      }
-#    }
-
 - path: /etc/systemd/system/config-firewall.service
   permissions: 0644
   owner: root
@@ -29,15 +16,15 @@ write_files:
     [Service]
     Type=oneshot
     RemainAfterExit=true
-    ExecStart=/sbin/iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    ExecStart=/sbin/iptables -A INPUT -p tcp \
+              %{~ for host_port, c in host_to_container_ports ~}
+              --match multiport --dports ${host_port} \
+              %{~ endfor ~}
+              -j ACCEPT
 
 - path: /etc/systemd/system/${service_name}.service
   permissions: 0644
   owner: root
-  # TODO: replace --net=host with specific ports, maybe loop through a template variable
-  # without -u 2000, need one of:
-  #   --net=host
-  #   -p 80:80
   content: |
     [Unit]
     Description=${service_name} service
@@ -48,14 +35,19 @@ write_files:
     Restart=always
     Environment="HOME=/home/${service_name}"
     ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
-    ExecStart=/usr/bin/docker run --rm --net=host --name=${service_name} ${container_image_name}
+    ExecStart=/usr/bin/docker run --name=${service_name} \
+                                  --rm \
+                                  -u 2000 \
+                                  %{~ for host_port, container_port in host_to_container_ports ~}
+                                  -p ${host_port}:${container_port} \
+                                  %{~ endfor ~}
+                                  ${container_image_name}
     # ExecStop=/usr/bin/docker stop ${service_name}
     ExecStop=-/usr/bin/docker exec ${service_name} -s quit
     ExecStopPost=/usr/bin/docker rm ${service_name}
 
 runcmd:
 - systemctl daemon-reload
-#- systemctl restart docker
 - systemctl start ${service_name}.service
 
 # Optional once-per-boot setup. For example: mounting a PD.

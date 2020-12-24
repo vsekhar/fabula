@@ -9,48 +9,34 @@ data "google_compute_image" "cos" {
     project = "cos-cloud"
 }
 
-data "template_file" "gce_cos_yaml" {
-    template = file("${path.module}/gce_cos.tmpl.yaml")
-    vars = {
-        // container_image_name = data.google_container_registry_image.fabula.image_url
-        container_image_name = "nginx"
-    }
-}
-
-data "template_file" "gce_cos_cloud_init_yaml" {
-    template = file("${path.module}/gce_cloud-init.tmpl.yaml")
-    vars = {
-        service_name = "fabula"
-        // container_image_name = data.google_container_registry_image.fabula.image_url
-        container_image_name = "nginx"
-        project_id = var.project_id // for logging
-    }
-}
-
 resource "google_compute_instance_template" "fabula" {
-    name = "fabula-instance-template"
+    name_prefix = "fabula-instance-template-"
     project = var.project_id
     tags = local.target_tags
     labels = {
         container-vm = data.google_compute_image.cos.name
     }
-    machine_type = "f1-micro"
+    machine_type = "e2-small"
     disk {
         source_image = data.google_compute_image.cos.self_link
         auto_delete = true
         boot = true
     }
     metadata = {
-        // TODO: try with cloud-init
-        // gce-container-declaration = data.template_file.gce_cos_yaml.rendered
-        user-data = data.template_file.gce_cos_cloud_init_yaml.rendered
-
-        // TODO: start stackdriver logging agent? https://stackoverflow.com/a/58722803/608382
+        user-data = templatefile("${path.module}/gce_cloud-init.tmpl.yaml",
+            {
+                service_name = "fabula",
+                // TODO: container_image_name = data.google_container_registry_image.fabula.image_url
+                container_image_name = "gcr.io/google-samples/hello-app:2.0",
+                host_to_container_ports = {
+                    "80" = "8080",
+                }
+            }
+        )
         google-logging-enabled = "true"
         google-monitoring-enabled = "true"
-        enable-oslogin = "true"
         cos-metrics-enabled = "true"
-
+        enable-oslogin = "true"
     }
 
     network_interface {
@@ -71,7 +57,17 @@ resource "google_compute_instance_template" "fabula" {
 
     service_account {
         email = google_service_account.fabula.email
-        scopes = []
+        scopes = [
+            // Restrict via IAM on service account:
+            // https://cloud.google.com/compute/docs/access/service-accounts#service_account_permissions
+            "https://www.googleapis.com/auth/cloud-platform",
+        ]
+    }
+
+    shielded_instance_config {
+      enable_secure_boot = true
+      enable_vtpm = true
+      enable_integrity_monitoring = true
     }
 }
 

@@ -16,16 +16,13 @@ resource "google_project_iam_binding" "fabula_esp_service_controller" {
     ]
 }
 
-data "template_file" "endpoint_yaml" {
-    template = file("${path.module}/endpoints.tmpl.yaml")
-    vars = {
-        project_id = var.project_id
-    }
-}
-
 resource "google_endpoints_service" "grpc_service" {
     service_name = "fabula.endpoints.${var.project_id}.cloud.goog"
-    grpc_config = data.template_file.endpoint_yaml.rendered
+    grpc_config = templatefile("${path.module}/endpoints.tmpl.yaml",
+        {
+            project_id = var.project_id
+        }
+    )
     protoc_output_base64 = filebase64("${path.module}/../api_descriptor.pb")
 }
 

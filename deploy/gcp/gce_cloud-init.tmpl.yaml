@@ -6,6 +6,7 @@ users:
 
 write_files:
 
+# https://cloud.google.com/container-optimized-os/docs/how-to/firewall
 - path: /etc/systemd/system/config-firewall.service
   permissions: 0644
   owner: root
@@ -37,6 +38,7 @@ write_files:
     ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
     ExecStart=/usr/bin/docker run --name=${service_name} \
                                   --rm \
+                                  --log-opt tag=container.{{.Name}} \
                                   -u 2000 \
                                   %{~ for host_port, container_port in host_to_container_ports ~}
                                   -p ${host_port}:${container_port} \

@@ -10,12 +10,19 @@ data "google_compute_image" "cos" {
 }
 
 resource "google_compute_instance_template" "fabula" {
-    name_prefix = "fabula-instance-template-"
+    lifecycle {
+        create_before_destroy = true
+    }
+
+    name = "fabula-instance-template" // name_prefix creates very long names
     project = var.project_id
     tags = local.target_tags
     labels = {
         container-vm = data.google_compute_image.cos.name
-        container = data.google_container_registry_image.fabula.image_url
+        container-image-project = local.image_project
+        container-image-name = local.image_name
+        // label values are length-limited
+        container-image-digest = substr(replace(local.image_digest, ":", "-"), 0, 15)
     }
     machine_type = "e2-small"
     disk {

@@ -37,8 +37,8 @@ write_files:
     Environment="HOME=/home/${service_name}"
     ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
     ExecStart=/usr/bin/docker run --name=${service_name} \
+                                  --log-opt tag="${container_image_name}/{{.Name}}" \
                                   --rm \
-                                  --log-opt tag=container.{{.Name}} \
                                   -u 2000 \
                                   %{~ for host_port, container_port in host_to_container_ports ~}
                                   -p ${host_port}:${container_port} \

@@ -15,6 +15,7 @@ resource "google_compute_instance_template" "fabula" {
     tags = local.target_tags
     labels = {
         container-vm = data.google_compute_image.cos.name
+        container = data.google_container_registry_image.fabula.image_url
     }
     machine_type = "e2-small"
     disk {

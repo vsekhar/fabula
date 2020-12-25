@@ -42,8 +42,9 @@ resource "google_compute_region_instance_group_manager" "fabula" {
     }
     version {
         name = "prod"
-        instance_template = google_compute_instance_template.fabula.id
+        instance_template = module.fabula_instance_template.self_link
     }
+    /*
     version {
         name = "canary"
         instance_template = google_compute_instance_template.fabula.id
@@ -51,6 +52,7 @@ resource "google_compute_region_instance_group_manager" "fabula" {
             fixed = 1
         }
     }
+    */
 }
 
 resource "google_compute_region_autoscaler" "fabula" {
@@ -60,7 +62,8 @@ resource "google_compute_region_autoscaler" "fabula" {
     autoscaling_policy {
         mode = "ON"
         max_replicas = 9
-        min_replicas = 3 // 1 per zone
+        // min_replicas = 3 // 1 per zone
+        min_replicas = 1 // for development
         cooldown_period = 60
         cpu_utilization {
             target = 0.5

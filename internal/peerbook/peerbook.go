@@ -3,13 +3,14 @@
 package peerbook
 
 import (
+	"context"
 	"net"
 	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/golang/groupcache/consistenthash"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 	log "github.com/sirupsen/logrus"
@@ -28,6 +29,10 @@ import (
 // each time a server is added or removed). But we do this asynchronously so it
 // should be manageable.
 const shardsPerServer = 100
+
+// Do an update of the ring hash agianst all members every forcedUpdatePeriod
+// to ensure we capture all members even if we miss member join events.
+const forcedUpdatePeriod = 30 * time.Second
 
 type eventHandler struct {
 	p *PeerBook
@@ -63,9 +68,8 @@ type PeerBook struct {
 	agent *agent.Agent
 
 	memberNotifier *notify.Notifier
-	ring           atomic.Value  // *consistenthash.Map[string(prefix)]string(name)
-	members        *sync.Map     // map[string(name)]serf.Member
-	clients        *lru.ARCCache // effectively map[string(name)]*client
+	ring           atomic.Value // *consistenthash.Map[string(prefix)]string(name)
+	members        *sync.Map    // map[string(name)]serf.Member
 
 	// BroadcastHandler is called to handle each broadcast message sent to
 	// peers. It should complete quickly to prevent missing future messages.
@@ -89,10 +93,14 @@ type PeerBook struct {
 	// PeerBook held the only reference to the peer object, then the object will
 	// be deallocated.
 	DestroyPeerObject func(key string, obj interface{})
-	peerObjects       *sync.Map
+	peerObjects       *sync.Map // TODO: lru.ARCCache?
+
+	startCtx   context.Context
+	shutdownWg *sync.WaitGroup
 }
 
-// New returns a new PeerBook
+// New returns a new PeerBook.
+//
 func New(nodeName string, port int, tags map[string]string) *PeerBook {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.NodeName = nodeName
@@ -124,14 +132,60 @@ func New(nodeName string, port int, tags map[string]string) *PeerBook {
 	r.members = new(sync.Map)
 	r.memberNotifier = notify.New(r.updateMembers)
 	r.peerObjects = new(sync.Map)
+	r.shutdownWg = new(sync.WaitGroup)
 	agent.RegisterEventHandler(&eventHandler{p: r})
 	return r
 }
 
 // Start starts the PeerBook. Exported fields should not be changed after
 // calling start.
-func (p *PeerBook) Start() error {
-	return p.agent.Start()
+//
+// Cancelling the provided context terminates the peer.
+func (p *PeerBook) Start(ctx context.Context) error {
+	p.startCtx = ctx
+	if err := p.agent.Start(); err != nil {
+		return err
+	}
+
+	// force periodic member updates into the hash ring
+	p.shutdownWg.Add(1)
+	go func() {
+		t := time.NewTicker(forcedUpdatePeriod)
+		defer p.shutdownWg.Done()
+		for {
+			select {
+			case <-t.C:
+				p.memberNotifier.Notify()
+			case <-ctx.Done():
+				if err := ctx.Err(); err != nil {
+					log.WithError(err).Error("peerbook: context error")
+				}
+				return
+			}
+		}
+	}()
+
+	// shut down on context cancellation
+	p.shutdownWg.Add(1)
+	go func() {
+		defer p.shutdownWg.Done()
+		<-ctx.Done()
+		if err := p.agent.Leave(); err != nil {
+			log.WithError(err).Error("peerbook: agent leave")
+		}
+		p.agent.Shutdown()
+		p.memberNotifier.Close()
+		if p.DestroyPeerObject != nil {
+			p.peerObjects.Range(func(key, value interface{}) bool {
+				if p.DestroyPeerObject != nil {
+					p.DestroyPeerObject(key.(string), value)
+				}
+				return true // keep going
+			})
+		}
+	}()
+
+	return nil
 }
 
 func (p *PeerBook) updateMembers() {
@@ -192,22 +246,6 @@ func (p *PeerBook) updateMembers() {
 	// TODO: report metric
 }
 
-// Close winds down a PeerBook and releases resources.
-func (p *PeerBook) Close() error {
-	err := p.agent.Leave()
-	p.agent.Shutdown()
-	p.memberNotifier.Close()
-	if p.DestroyPeerObject != nil {
-	}
-	p.peerObjects.Range(func(key, value interface{}) bool {
-		if p.DestroyPeerObject != nil {
-			p.DestroyPeerObject(key.(string), value)
-		}
-		return true // keep going
-	})
-	return err
-}
-
 // Broadcast broadcasts a small message to all peers in the group. Broadcasts
 // can be used to keep peers up-to-date. Broadcasts are delivered on an
 // eventually consistent basis.
@@ -233,11 +271,21 @@ func (p *PeerBook) GetPeer(key string) (peerName string, addr net.IP, tags map[s
 //
 // Peer objects are typically used for client connections.
 func (p *PeerBook) GetPeerObject(key string) (interface{}, error) {
-	// Short-circuit
 	obj, ok := p.peerObjects.Load(key)
 	if ok {
 		return obj, nil
 	}
+	return p.RefreshPeerObject(key)
+}
+
+// RefreshPeerObject returns a new peer object associated with the peer. Any
+// previous peer object is dropped and destroyed (if DestroyPeerObject is set).
+//
+// RefreshPeerObject should only be used if an older per object returned by
+// GetPeerObject is found to be invalid in some way (e.g. if a client handle has
+// timed out or the connection has produced an error).
+func (p *PeerBook) RefreshPeerObject(key string) (interface{}, error) {
+	p.peerObjects.Delete(key)
 
 	if p.NewPeerObject == nil {
 		return nil, nil
@@ -293,4 +341,15 @@ func (p *PeerBook) Port() int {
 // to other peers, e.g. the port at which an RPC server can be reached.
 func (p *PeerBook) SetTags(tags map[string]string) error {
 	return p.agent.Serf().SetTags(tags)
+}
+
+// WaitForShutdown blocks until all shutdown tasks are completed, including
+// the peer leaving the peer group. Shutdown is initiated by cancelling the
+// context passed to Start.
+//
+// WaitForShutdown can be used to ensure a peer has released its resources (e.g.
+// listening ports) before a new peer is created. This can be used for stateful
+// restart or in tests.
+func (p *PeerBook) WaitForShutdown() {
+	p.shutdownWg.Wait()
 }

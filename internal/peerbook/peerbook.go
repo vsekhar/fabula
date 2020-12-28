@@ -270,9 +270,10 @@ func (p *PeerBook) PeerCount() int {
 
 // Join joins peers at the addresses in addrs.
 //
-// Join must be used to bootstrap a new PeerBook by introducing it to another
-// instance of PeerBook. Addresses need to be exchanged out of band (e.g.
-// manually or by querying cloud infrastructure).
+// Join must be used to bootstrap a new PeerBook by introducing it to at least
+// one other PeerBook in a group of peers. This is usually done out of band
+// (e.g. manually or by querying cloud infrastructure to get the local IPs
+// of other instances in a group or tasks in a job).
 //
 // Start must be called on this peer before calling Join.
 func (p *PeerBook) Join(addrs []string) (n int, err error) {

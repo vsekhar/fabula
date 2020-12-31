@@ -4,6 +4,8 @@ package peerbook
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"sync"
@@ -15,6 +17,8 @@ import (
 	"github.com/hashicorp/serf/serf"
 	log "github.com/sirupsen/logrus"
 	"github.com/vsekhar/fabula/internal/notify"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // The number of shards to divide the keyspace into for each server in the
@@ -33,6 +37,8 @@ const shardsPerServer = 100
 // Do an update of the ring hash agianst all members every forcedUpdatePeriod
 // to ensure we capture all members even if we miss member join events.
 const forcedUpdatePeriod = 30 * time.Second
+
+const controlPortTagName = "_peerbookControlPort"
 
 type eventHandler struct {
 	p *PeerBook
@@ -64,8 +70,8 @@ type LamportTime = serf.LamportTime
 // Exported fields shold be set before calling Start(), and should not be
 // changed thereafter.
 type PeerBook struct {
-	port  int
-	agent *agent.Agent
+	controlPort int
+	agent       *agent.Agent
 
 	memberNotifier *notify.Notifier
 	ring           atomic.Value // *consistenthash.Map[string(prefix)]string(name)
@@ -97,19 +103,25 @@ type PeerBook struct {
 
 	startCtx   context.Context
 	shutdownWg *sync.WaitGroup
+
+	peerCount metric.Int64ValueRecorder
 }
 
 // New returns a new PeerBook.
-//
-func New(nodeName string, port int, tags map[string]string) *PeerBook {
+func New(nodeName string, controlPort int, tags map[string]string) (*PeerBook, error) {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.NodeName = nodeName
 	serfConfig.MemberlistConfig.BindAddr = "0.0.0.0"
-	serfConfig.MemberlistConfig.BindPort = port
+	serfConfig.MemberlistConfig.BindPort = controlPort
 	serfConfig.MemberlistConfig.LogOutput = os.Stdout
 	// serfConfig.Logger = stdLogger
 	serfConfig.LogOutput = os.Stdout
-	serfConfig.Tags = tags
+	setTags := make(map[string]string)
+	for k, v := range tags {
+		setTags[k] = v
+	}
+	setTags[controlPortTagName] = fmt.Sprintf("%d", controlPort)
+	serfConfig.Tags = setTags
 	agentConfig := agent.DefaultConfig()
 	agentConfig.NodeName = nodeName
 
@@ -123,18 +135,26 @@ func New(nodeName string, port int, tags map[string]string) *PeerBook {
 
 	agent, err := agent.Create(agentConfig, serfConfig, os.Stderr)
 	if err != nil {
-		log.WithError(err).Fatal("peerbook: should not occur, agent.Create only returns error if loading a tags or keyring file fails, we use neither")
+		return nil, err
 	}
 
 	r := new(PeerBook)
-	r.port = port
+	r.controlPort = controlPort
 	r.agent = agent
 	r.members = new(sync.Map)
 	r.memberNotifier = notify.New(r.updateMembers)
 	r.peerObjects = new(sync.Map)
 	r.shutdownWg = new(sync.WaitGroup)
+	meter := otel.Meter("peerbook")
+	r.peerCount = metric.Must(meter).NewInt64ValueRecorder(
+		"peers",
+		metric.WithDescription("Number of peers found and joined"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	agent.RegisterEventHandler(&eventHandler{p: r})
-	return r
+	return r, nil
 }
 
 // Start starts the PeerBook. Exported fields should not be changed after
@@ -158,7 +178,9 @@ func (p *PeerBook) Start(ctx context.Context) error {
 				p.memberNotifier.Notify()
 			case <-ctx.Done():
 				if err := ctx.Err(); err != nil {
-					log.WithError(err).Error("peerbook: context error")
+					if !errors.Is(err, context.Canceled) {
+						log.WithError(err).Error("peerbook: from context")
+					}
 				}
 				return
 			}
@@ -205,7 +227,13 @@ func (p *PeerBook) updateMembers() {
 				continue
 			}
 			nameMap[m.Name] = struct{}{}
-			addrMap[m.Addr.String()] = struct{}{}
+			addr := m.Addr.String()
+			port, ok := m.Tags[controlPortTagName]
+			if !ok {
+				log.WithField("name", m.Name).Error("node does not have 'controlPort' tag")
+				continue
+			}
+			addrMap[fmt.Sprintf("%s:%s", addr, port)] = struct{}{}
 			p.members.Store(m.Name, m)
 		}
 	}
@@ -227,7 +255,7 @@ func (p *PeerBook) updateMembers() {
 		name := key.(string)
 		if _, ok := nameMap[name]; !ok {
 			p.members.Delete(key)
-			log.Debugf("peerbook: dropping member: %s", name)
+			log.WithField("peer_name", name).Debug("peerbook: dropping peer", name)
 		}
 		return true // keep going
 	})
@@ -237,13 +265,16 @@ func (p *PeerBook) updateMembers() {
 			if obj, loaded := p.peerObjects.LoadAndDelete(key); loaded && p.DestroyPeerObject != nil {
 				p.DestroyPeerObject(name, obj)
 			}
-			log.Debugf("peerbook: purging peerObject for member: %s", name)
+			log.WithField("peer_name", name).Debug("peerbook: purging peerObject")
 		}
 		return true // keep going
 	})
 
-	log.Debugf("peerbook: hashring size: %d - %#v", len(addrMap), addrMap)
-	// TODO: report metric
+	log.WithFields(log.Fields{
+		"size":      len(addrMap),
+		"addresses": addrMap,
+	}).Debug("peerbook: hashring update")
+	p.peerCount.Record(context.Background(), int64(len(addrMap)))
 }
 
 // Broadcast broadcasts a small message to all peers in the group. Broadcasts
@@ -259,7 +290,7 @@ func (p *PeerBook) GetPeer(key string) (peerName string, addr net.IP, tags map[s
 	peerName = p.ring.Load().(*consistenthash.Map).Get(key)
 	memberi, ok := p.members.Load(peerName)
 	if !ok {
-		log.Fatalf("peerbook: expected to load member information for: %s", peerName)
+		log.WithField("peer_name", peerName).Fatal("peerbook: expected to load member information")
 	}
 	member := memberi.(serf.Member)
 	return peerName, member.Addr, member.Tags
@@ -330,7 +361,7 @@ func (p *PeerBook) Join(addrs []string) (n int, err error) {
 
 // Port returns the port the PeerBook is using for control traffic.
 func (p *PeerBook) Port() int {
-	return p.port
+	return p.controlPort
 }
 
 // SetTags updates the tags associated with the current peer. The provided tags

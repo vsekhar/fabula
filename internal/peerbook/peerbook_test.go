@@ -20,13 +20,17 @@ const firstTagPort = 29679
 func createPeers(t *testing.T, n int) (peerbooks []*peerbook.PeerBook) {
 	peerbooks = make([]*peerbook.PeerBook, n)
 	for i := 0; i < n; i++ {
-		peerbooks[i] = peerbook.New(
+		var err error
+		peerbooks[i], err = peerbook.New(
 			fmt.Sprintf("peerbook_test_peer_id_%d", i),
 			firstControlPort+i,
 			map[string]string{
 				"port": fmt.Sprintf("%d", firstTagPort+i),
 			},
 		)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	return peerbooks
 }

@@ -17,11 +17,12 @@ import (
 const firstControlPort = 28679
 const firstTagPort = 29679
 
-func createPeers(t *testing.T, n int) (peerbooks []*peerbook.PeerBook) {
+func createPeers(t *testing.T, ctx context.Context, n int) (peerbooks []*peerbook.PeerBook) {
 	peerbooks = make([]*peerbook.PeerBook, n)
 	for i := 0; i < n; i++ {
 		var err error
 		peerbooks[i], err = peerbook.New(
+			ctx,
 			fmt.Sprintf("peerbook_test_peer_id_%d", i),
 			firstControlPort+i,
 			map[string]string{
@@ -33,14 +34,6 @@ func createPeers(t *testing.T, n int) (peerbooks []*peerbook.PeerBook) {
 		}
 	}
 	return peerbooks
-}
-
-func startPeers(t *testing.T, ctx context.Context, pbs []*peerbook.PeerBook) {
-	for _, p := range pbs {
-		if err := p.Start(ctx); err != nil {
-			t.Error(err)
-		}
-	}
 }
 
 func linkLocalPeers(t *testing.T, pbs []*peerbook.PeerBook) {
@@ -72,12 +65,11 @@ func waitForShutdowns(t *testing.T, pbs []*peerbook.PeerBook) {
 }
 
 func TestPeerBook(t *testing.T) {
-	peers := createPeers(t, 2)
-	defer waitForShutdowns(t, peers)
-
 	ctx, cancel := context.WithCancel(context.Background())
+	peers := createPeers(t, ctx, 2)
+	defer waitForShutdowns(t, peers)
 	defer cancel()
-	startPeers(t, ctx, peers)
+
 	linkLocalPeers(t, peers)
 	if p := peers[1].PeerCount(); p != 2 {
 		t.Errorf("expected 2 peer, got %d peers", p)
@@ -104,11 +96,11 @@ type peerObject struct {
 
 func TestPeerObject(t *testing.T) {
 	peerCount := 2
-	peers := createPeers(t, peerCount)
-	defer waitForShutdowns(t, peers)
-
 	ctx, cancel := context.WithCancel(context.Background())
+	peers := createPeers(t, ctx, peerCount)
+	defer waitForShutdowns(t, peers)
 	defer cancel()
+
 	svrs := make([]*http.Server, peerCount)
 
 	for i, p := range peers {
@@ -138,7 +130,6 @@ func TestPeerObject(t *testing.T) {
 		}
 	}()
 
-	startPeers(t, ctx, peers)
 	linkLocalPeers(t, peers)
 	obj, err := peers[0].GetPeerObject("a127")
 	if err != nil {
@@ -170,10 +161,9 @@ func (b *broadcastHandler) Handle(ltime peerbook.LamportTime, name string, paylo
 
 func TestBroadcast(t *testing.T) {
 	peerCount := 2
-	peers := createPeers(t, peerCount)
-	defer waitForShutdowns(t, peers)
-
 	ctx, cancel := context.WithCancel(context.Background())
+	peers := createPeers(t, ctx, peerCount)
+	defer waitForShutdowns(t, peers)
 	defer cancel()
 
 	handlers := make([]*broadcastHandler, peerCount)
@@ -183,7 +173,6 @@ func TestBroadcast(t *testing.T) {
 		handlers[i].wg.Add(1)
 		p.BroadcastHandler = handlers[i].Handle
 	}
-	startPeers(t, ctx, peers)
 	linkLocalPeers(t, peers)
 
 	// We cannot easily test coalescing behavior since it relies on asynchronous

@@ -7,17 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/golang/groupcache/consistenthash"
-	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 	log "github.com/sirupsen/logrus"
+	"github.com/vsekhar/fabula/internal/hclog2logrus"
 	"github.com/vsekhar/fabula/internal/notify"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/label"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -40,27 +40,6 @@ const forcedUpdatePeriod = 30 * time.Second
 
 const controlPortTagName = "_peerbookControlPort"
 
-type eventHandler struct {
-	p *PeerBook
-}
-
-func (e *eventHandler) HandleEvent(event serf.Event) {
-	switch x := event.(type) {
-	case serf.MemberEvent:
-		e.p.memberNotifier.Notify()
-	case serf.UserEvent:
-		log.Infof("User event received: %+v", x)
-		if e.p.BroadcastHandler != nil {
-			e.p.BroadcastHandler(
-				x.LTime,
-				x.Name,
-				x.Payload,
-				x.Coalesce,
-			)
-		}
-	}
-}
-
 // LamportTime is a monotonic clock that can be used to order broadcast
 // messages.
 type LamportTime = serf.LamportTime
@@ -71,7 +50,7 @@ type LamportTime = serf.LamportTime
 // changed thereafter.
 type PeerBook struct {
 	controlPort int
-	agent       *agent.Agent
+	serf        *serf.Serf
 
 	memberNotifier *notify.Notifier
 	ring           atomic.Value // *consistenthash.Map[string(prefix)]string(name)
@@ -101,81 +80,98 @@ type PeerBook struct {
 	DestroyPeerObject func(key string, obj interface{})
 	peerObjects       *sync.Map // TODO: lru.ARCCache?
 
-	startCtx   context.Context
+	ctx        context.Context
 	shutdownWg *sync.WaitGroup
 
-	peerCount metric.Int64ValueRecorder
+	peerCount metric.BoundInt64ValueRecorder
 }
 
 // New returns a new PeerBook.
-func New(nodeName string, controlPort int, tags map[string]string) (*PeerBook, error) {
+//
+// Cancelling the provided context terminates the peer.
+func New(ctx context.Context, nodeName string, controlPort int, tags map[string]string) (*PeerBook, error) {
 	serfConfig := serf.DefaultConfig()
 	serfConfig.NodeName = nodeName
 	serfConfig.MemberlistConfig.BindAddr = "0.0.0.0"
 	serfConfig.MemberlistConfig.BindPort = controlPort
-	serfConfig.MemberlistConfig.LogOutput = os.Stdout
-	// serfConfig.Logger = stdLogger
-	serfConfig.LogOutput = os.Stdout
+	toLogrus := hclog2logrus.New()
+	serfConfig.MemberlistConfig.Logger = toLogrus
+	serfConfig.Logger = toLogrus
 	setTags := make(map[string]string)
 	for k, v := range tags {
 		setTags[k] = v
 	}
 	setTags[controlPortTagName] = fmt.Sprintf("%d", controlPort)
 	serfConfig.Tags = setTags
-	agentConfig := agent.DefaultConfig()
-	agentConfig.NodeName = nodeName
-
-	// These seem unused:
-	//   agentConfig.BindAddr = fmt.Sprintf("0.0.0.0:%d", port)
-	//   agentConfig.LogLevel = "ERROR"
-	//   agentConfig.Tags = tags
-
-	// Doesn't work on GCP, no broadcast:
-	//   agentConfig.Discover = "peerbook.svc.cluster.local"
-
-	agent, err := agent.Create(agentConfig, serfConfig, os.Stderr)
+	eventCh := make(chan serf.Event, 10)
+	serfConfig.EventCh = eventCh
+	s, err := serf.Create(serfConfig)
 	if err != nil {
 		return nil, err
 	}
 
 	r := new(PeerBook)
+	r.ctx = ctx
 	r.controlPort = controlPort
-	r.agent = agent
+	r.serf = s
 	r.members = new(sync.Map)
 	r.memberNotifier = notify.New(r.updateMembers)
 	r.peerObjects = new(sync.Map)
 	r.shutdownWg = new(sync.WaitGroup)
 	meter := otel.Meter("peerbook")
+
+	// TODO: Ensure the monitored resource is defined if local.
+	//
+	// See:
+	//   https://github.com/census-instrumentation/opencensus-node/issues/694#issuecomment-563896578
+	//   https://github.com/census-instrumentation/opencensus-node/pull/707#issuecomment-555371603
+	//
+	// Still not working, getting periodic errors:
+	//   2021/01/01 15:44:51 rpc error: code = InvalidArgument desc = One or
+	//   more TimeSeries could not be written: Points must be written in order.
+	//   One or more of the points specified had an older start time than the
+	//   most recent point.: timeSeries[0-7,9-12]
+	//
+	// Filed:
+	//   https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/issues/127
 	r.peerCount = metric.Must(meter).NewInt64ValueRecorder(
 		"peers",
 		metric.WithDescription("Number of peers found and joined"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	agent.RegisterEventHandler(&eventHandler{p: r})
-	return r, nil
-}
+	).Bind([]label.KeyValue{
+		label.String("host.id", nodeName),
+		label.String("service.name", "peerbook"),
+		label.String("service.instance.id", nodeName),
+	}...)
 
-// Start starts the PeerBook. Exported fields should not be changed after
-// calling start.
-//
-// Cancelling the provided context terminates the peer.
-func (p *PeerBook) Start(ctx context.Context) error {
-	p.startCtx = ctx
-	if err := p.agent.Start(); err != nil {
-		return err
-	}
+	// Event handler
+	go func() {
+		for e := range eventCh {
+			switch x := e.(type) {
+			case serf.MemberEvent:
+				r.memberNotifier.Notify() // update hash ring
+			case serf.UserEvent:
+				log.Infof("User event received: %+v", x)
+				if r.BroadcastHandler != nil {
+					r.BroadcastHandler(
+						x.LTime,
+						x.Name,
+						x.Payload,
+						x.Coalesce,
+					)
+				}
+			}
+		}
+	}()
 
 	// force periodic member updates into the hash ring
-	p.shutdownWg.Add(1)
+	r.shutdownWg.Add(1)
 	go func() {
 		t := time.NewTicker(forcedUpdatePeriod)
-		defer p.shutdownWg.Done()
+		defer r.shutdownWg.Done()
 		for {
 			select {
 			case <-t.C:
-				p.memberNotifier.Notify()
+				r.memberNotifier.Notify()
 			case <-ctx.Done():
 				if err := ctx.Err(); err != nil {
 					if !errors.Is(err, context.Canceled) {
@@ -188,30 +184,33 @@ func (p *PeerBook) Start(ctx context.Context) error {
 	}()
 
 	// shut down on context cancellation
-	p.shutdownWg.Add(1)
+	r.shutdownWg.Add(1)
 	go func() {
-		defer p.shutdownWg.Done()
+		defer r.shutdownWg.Done()
 		<-ctx.Done()
-		if err := p.agent.Leave(); err != nil {
-			log.WithError(err).Error("peerbook: agent leave")
+		if err := r.serf.Leave(); err != nil {
+			log.WithError(err).Error("peerbook: serf leave")
 		}
-		p.agent.Shutdown()
-		p.memberNotifier.Close()
-		if p.DestroyPeerObject != nil {
-			p.peerObjects.Range(func(key, value interface{}) bool {
-				if p.DestroyPeerObject != nil {
-					p.DestroyPeerObject(key.(string), value)
+		if err := r.serf.Shutdown(); err != nil {
+			log.WithError(err).Error("peerbook: serf shutdown")
+		}
+		r.memberNotifier.Close()
+		if r.DestroyPeerObject != nil {
+			r.peerObjects.Range(func(key, value interface{}) bool {
+				if r.DestroyPeerObject != nil {
+					r.DestroyPeerObject(key.(string), value)
 				}
 				return true // keep going
 			})
 		}
+		<-r.serf.ShutdownCh()
 	}()
 
-	return nil
+	return r, nil
 }
 
 func (p *PeerBook) updateMembers() {
-	members := p.agent.Serf().Members()
+	members := p.serf.Members()
 	alive := 0
 	for _, m := range members {
 		if m.Status == serf.StatusAlive {
@@ -281,7 +280,7 @@ func (p *PeerBook) updateMembers() {
 // can be used to keep peers up-to-date. Broadcasts are delivered on an
 // eventually consistent basis.
 func (p *PeerBook) Broadcast(name string, payload []byte, coalesce bool) error {
-	return p.agent.UserEvent(name, payload, coalesce)
+	return p.serf.UserEvent(name, payload, coalesce)
 }
 
 // GetPeer returns the peerName, ip and tags of the peer owning the provided
@@ -338,7 +337,7 @@ func (p *PeerBook) RefreshPeerObject(key string) (interface{}, error) {
 // PeerCount returns the number of alive peers.
 func (p *PeerBook) PeerCount() int {
 	n := 0
-	members := p.agent.Serf().Members()
+	members := p.serf.Members()
 	for _, m := range members {
 		if m.Status == serf.StatusAlive {
 			n++
@@ -356,7 +355,7 @@ func (p *PeerBook) PeerCount() int {
 //
 // Start must be called on this peer before calling Join.
 func (p *PeerBook) Join(addrs []string) (n int, err error) {
-	return p.agent.Serf().Join(addrs, true /* ignoreOld */)
+	return p.serf.Join(addrs, true /* ignoreOld */)
 }
 
 // Port returns the port the PeerBook is using for control traffic.
@@ -371,7 +370,7 @@ func (p *PeerBook) Port() int {
 // Tags are usually used to advertise information about services a peer provides
 // to other peers, e.g. the port at which an RPC server can be reached.
 func (p *PeerBook) SetTags(tags map[string]string) error {
-	return p.agent.Serf().SetTags(tags)
+	return p.serf.SetTags(tags)
 }
 
 // WaitForShutdown blocks until all shutdown tasks are completed, including

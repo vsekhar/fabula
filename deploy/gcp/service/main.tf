@@ -3,7 +3,7 @@ resource "google_compute_region_instance_group_manager" "rigm" {
     base_instance_name = "service-${var.name}-instances"
     region = var.region
     auto_healing_policies {
-        health_check = var.global_health_check
+        health_check = google_compute_health_check.hc.id
         initial_delay_sec = 180
     }
     dynamic "version" {
@@ -25,7 +25,7 @@ resource "google_compute_region_instance_group_manager" "rigm" {
 resource "google_compute_region_backend_service" "be" {
     name = "service-${var.name}-be"
     region = var.region
-    health_checks = var.region_health_checks
+    health_checks = [google_compute_region_health_check.hc.id]
 
     // TODO: internal and exteranl options
     load_balancing_scheme = "EXTERNAL"
@@ -68,4 +68,46 @@ resource "google_compute_forwarding_rule" "forwarding_rule" {
     region = var.region
     backend_service = google_compute_region_backend_service.be.id
     port_range = "80"
+}
+
+// TODO: adjust for internal
+resource "google_compute_firewall" "allow-external" {
+    name = "service-${var.name}-allow-external"
+    network = var.network
+    allow {
+        protocol = "icmp" // ping
+    }
+    allow {
+        protocol = "tcp"
+        ports = ["80", "8080"]
+    }
+}
+
+resource "google_compute_region_health_check" "hc" {
+    name = "service-${var.name}-http-regional"
+    http_health_check {
+      port = var.http_health_check_port
+      request_path = var.http_health_check_path
+    }
+}
+
+resource "google_compute_health_check" "hc" {
+    name = "service-${var.name}-http"
+    http_health_check {
+      port = var.http_health_check_port
+      request_path = var.http_health_check_path
+    }
+}
+
+resource "google_compute_firewall" "allow_health_checks" {
+    name = "service-${var.name}-allow-health-checks"
+    network = var.network
+
+    // https://cloud.google.com/load-balancing/docs/health-check-concepts#ip-ranges
+    source_ranges = [ "35.191.0.0/16", "130.211.0.0/22" ]
+    direction = "INGRESS"
+    allow {
+        protocol = "tcp"
+        ports = ["80"]
+    }
 }

@@ -42,14 +42,21 @@ variable "service_account" {
     description = "Email address of service account"
 }
 
-variable "region_health_checks" {
-    type = list(string)
-    description = "IDs of regional health checks (google_compute_region_health_check). At least one is required."
+variable "http_health_check_path" {
+    type = string
+    description = "Relative path that returns 200 OK when healthy (e.g. '/healthz')."
 }
 
-variable "global_health_check" {
+variable "http_health_check_port" {
+    type = number
+    default = 8080
+    description = "Port on which to send HTTP health checks."
+}
+
+variable "network" {
     type = string
-    description = "ID of global health check (google_compute_health_check). Required."
+    default = "default"
+    description = "Network name."
 }
 
 variable "min_replicas" {

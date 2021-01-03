@@ -24,12 +24,12 @@ variable "host_to_container_ports" {
 
 variable "network" {
     type = string
-    default = ""
+    default = null
 }
 
 variable "subnetwork" {
     type = string
-    default = ""
+    default = null
 }
 
 variable "public_ip" {
@@ -40,6 +40,7 @@ variable "public_ip" {
 
 variable "service_account" {
     type = string
+    default = null
 }
 
 variable "preemptible" {
@@ -53,4 +54,5 @@ variable "machine_type" {
 
 variable "tags" {
     type = list(string)
+    default = []
 }

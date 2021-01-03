@@ -4,7 +4,23 @@ data "google_compute_image" "cos" {
 }
 
 resource "random_id" "tmpl" {
-  byte_length = 4
+    byte_length = 4
+    keepers = {
+        // Depend on all the variables used by google_compute_instance_template.template
+        // so that we get a new random_id each time the variables to this module are
+        // changed by the user. This is necessary because template names must be unique.
+        name = var.name
+        tags = join(" ", var.tags)
+        container_image = jsonencode(var.container_image)
+        machine_type = var.machine_type
+        host_to_container_ports = jsonencode(var.host_to_container_ports)
+        args = join(" ", var.args)
+        network = var.network
+        subnetwork = var.subnetwork
+        public_ip = var.public_ip
+        preemptible = var.preemptible
+        service_account = var.service_account
+    }
 }
 
 resource "google_compute_instance_template" "template" {
@@ -12,8 +28,8 @@ resource "google_compute_instance_template" "template" {
         create_before_destroy = true
     }
 
-    name = "${var.name}-${random_id.tmpl.id}" // name_prefix creates very long names
-    tags = var.tags
+    name = "${var.name}-${lower(random_id.tmpl.id)}" // name_prefix creates very long names
+    tags = length(var.tags) > 0 ? var.tags : null
     labels = {
         // labels must be [a-z0-9_-] and at most 63 characters
         container-vm = data.google_compute_image.cos.name
@@ -25,7 +41,7 @@ resource "google_compute_instance_template" "template" {
             : null
         )
     }
-    machine_type = "e2-small"
+    machine_type = var.machine_type
     disk {
         source_image = data.google_compute_image.cos.self_link
         auto_delete = true
@@ -47,8 +63,8 @@ resource "google_compute_instance_template" "template" {
     }
 
     network_interface {
-        network = (var.network != "" ? var.network : null)
-        subnetwork = (var.subnetwork != "" ? var.subnetwork : null)
+        network = (var.network == null && var.subnetwork == null) ? "default" : var.network
+        subnetwork = var.subnetwork
 
         dynamic "access_config" {
             for_each = var.public_ip == "" ? [] : [1]
@@ -65,13 +81,16 @@ resource "google_compute_instance_template" "template" {
         automatic_restart   = "false"     // required for preemptible
     }
 
-    service_account {
-        email = var.service_account
-        scopes = [
-            // Restrict via IAM on service account:
-            // https://cloud.google.com/compute/docs/access/service-accounts#service_account_permissions
-            "https://www.googleapis.com/auth/cloud-platform",
-        ]
+    dynamic "service_account" {
+        for_each = var.service_account != null ? [1] : []
+        content {
+            email = var.service_account
+            scopes = [
+                // Restrict via IAM on service account:
+                // https://cloud.google.com/compute/docs/access/service-accounts#service_account_permissions
+                "https://www.googleapis.com/auth/cloud-platform",
+            ]
+        }
     }
 
     shielded_instance_config {

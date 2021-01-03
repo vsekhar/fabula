@@ -7,9 +7,13 @@ variable "name" {
     description = "Service name"
 }
 
-variable "region" {
-    type = string
-    description = "Region to deploy service to."
+variable "group" {
+    type = object({
+        name = string
+        network = string
+        subnetwork = string
+    })
+    description = "Service group to use."
 }
 
 variable "versions" {
@@ -59,16 +63,10 @@ variable "http_health_check_port" {
     description = "Port on which to send HTTP health checks."
 }
 
-variable "network" {
-    type = string
-    default = "default"
-    description = "Network name."
-}
-
 variable "min_replicas" {
     type = number
     default = 1
-    description = "Minimum number of replicas per region (3*n replicas will be started)."
+    description = "Minimum number of replicas per region."
 }
 
 variable "max_replicas" {

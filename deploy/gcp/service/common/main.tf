@@ -1,21 +1,26 @@
 module "container_vm_template" {
     for_each = var.versions
 
-    source = "../container_vm"
-    name = "service-${var.name}-${each.key}-template"
+    source = "../../container_vm"
+    name = "svc-${var.group.name}-${var.name}-${each.key}"
     container_image = each.value["container_image"]
     host_to_container_ports = var.service_to_container_ports
     preemptible = each.value["preemptible"]
     machine_type = each.value["machine_type"]
-    network = var.network
+    network = var.group.network
+    subnetwork = try(var.group.subnetwork, null)
 }
 
-// forwarding rule --> be service --> rigm --> instances
+// forwarding rule (int/ext) --> be service (int/ext) --> rigm (common) --> firewall (int/ext) -- > instances (common)
+//                                \ region health check   |- autoscaler (common)
+//                                  (common)               \ global health check (common)
+
+data "google_client_config" "current" {}
 
 resource "google_compute_region_instance_group_manager" "rigm" {
-    name = "service-${var.name}-rigm"
-    base_instance_name = "service-${var.name}-instances"
-    region = var.region
+    name = "svc-${var.group.name}-${var.name}-rigm"
+    base_instance_name = "svc-${var.group.name}-${var.name}-inst"
+    region = data.google_client_config.current.region // seems to be required for this resource type...
     auto_healing_policies {
         health_check = google_compute_health_check.hc.id
         initial_delay_sec = 180
@@ -36,24 +41,9 @@ resource "google_compute_region_instance_group_manager" "rigm" {
     }
 }
 
-resource "google_compute_region_backend_service" "be" {
-    name = "service-${var.name}-be"
-    region = var.region
-    health_checks = [google_compute_region_health_check.hc.id]
-
-    // TODO: internal and exteranl options
-    load_balancing_scheme = "EXTERNAL"
-
-    // TODO: separate rigms for each version?
-    backend {
-      group = google_compute_region_instance_group_manager.rigm.instance_group
-    }
-}
-
 resource "google_compute_region_autoscaler" "autoscaler" {
-    name = "service-${var.name}-autoscaler"
+    name = "svc-${var.group.name}-${var.name}-autoscaler"
     provider = google-beta // for filter and single_instance_assignment
-    region = var.region
     target = google_compute_region_instance_group_manager.rigm.id
     autoscaling_policy {
         mode = "ON"
@@ -77,27 +67,8 @@ resource "google_compute_region_autoscaler" "autoscaler" {
     }
 }
 
-resource "google_compute_forwarding_rule" "forwarding_rule" {
-    name = "service-${var.name}-forwarding-rule"
-    region = var.region
-    backend_service = google_compute_region_backend_service.be.id
-}
-
-// TODO: adjust for internal
-resource "google_compute_firewall" "allow-external" {
-    name = "service-${var.name}-allow-external"
-    network = var.network
-    allow {
-        protocol = "icmp" // ping
-    }
-    allow {
-        protocol = "tcp"
-        ports = ["80"]  // TODO: all ports in var.service_to_container_ports
-    }
-}
-
 resource "google_compute_region_health_check" "hc" {
-    name = "service-${var.name}-http-regional"
+    name = "svc-${var.group.name}-${var.name}-http-regional"
     http_health_check {
       port = var.http_health_check_port
       request_path = var.http_health_check_path
@@ -105,7 +76,7 @@ resource "google_compute_region_health_check" "hc" {
 }
 
 resource "google_compute_health_check" "hc" {
-    name = "service-${var.name}-http"
+    name = "svc-${var.group.name}-${var.name}-http"
     http_health_check {
       port = var.http_health_check_port
       request_path = var.http_health_check_path
@@ -113,8 +84,8 @@ resource "google_compute_health_check" "hc" {
 }
 
 resource "google_compute_firewall" "allow_health_checks" {
-    name = "service-${var.name}-allow-health-checks"
-    network = var.network
+    name = "svc-${var.group.name}-${var.name}-allow-health-checks"
+    network = var.group.network
 
     // https://cloud.google.com/load-balancing/docs/health-check-concepts#ip-ranges
     source_ranges = [ "35.191.0.0/16", "130.211.0.0/22" ]

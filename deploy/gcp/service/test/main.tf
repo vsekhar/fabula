@@ -41,6 +41,8 @@ module "external_hello_service" {
             container_image = data.google_container_registry_image.hello-app-v2
             machine_type = "e2-small"
             preemptible = true
+            // args = []
+            // env = {}
         }
     }
 }
@@ -48,7 +50,7 @@ module "external_hello_service" {
 // To verify internal service:
 //
 //   1) SSH into an instance in external_hello_service
-//   2) Curl internal_ip
+//   2) Curl internal_service_name
 //   3) verify version 1 server response.
 
 module "internal_hello_service" {
@@ -69,6 +71,8 @@ module "internal_hello_service" {
             container_image = data.google_container_registry_image.hello-app-v1
             machine_type = "e2-small"
             preemptible = true
+            // args = []
+            // env = {}
         }
     }
 }

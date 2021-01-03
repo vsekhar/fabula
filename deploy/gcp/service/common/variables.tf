@@ -24,6 +24,8 @@ variable "versions" {
             digest = string
             image_url = string
         })
+        args = optional(list(string), [])
+        env = optional(map(string), {})
         machine_type = string
         target_size = optional(object({
             fixed = number

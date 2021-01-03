@@ -9,3 +9,7 @@ output "external_lb_ip" {
 output "internal_lb_ip" {
     value = module.internal_hello_service.ip
 }
+
+output "internal_service_name" {
+    value = module.internal_hello_service.service_name
+}

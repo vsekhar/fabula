@@ -4,6 +4,8 @@ module "container_vm_template" {
     source = "../../container_vm"
     name = "svc-${var.group.name}-${var.name}-${each.key}"
     container_image = each.value["container_image"]
+    args = each.value["args"]
+    env = each.value["env"]
     host_to_container_ports = var.service_to_container_ports
     preemptible = each.value["preemptible"]
     machine_type = each.value["machine_type"]

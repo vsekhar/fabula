@@ -16,8 +16,6 @@ resource "google_compute_region_backend_service" "be" {
     name = "svc-${var.group.name}-${var.name}-be"
     health_checks = [module.service_common.regional_health_check_id]
     load_balancing_scheme = "EXTERNAL"
-
-    // TODO: separate rigms for each version?
     backend {
       group = module.service_common.instance_group
     }

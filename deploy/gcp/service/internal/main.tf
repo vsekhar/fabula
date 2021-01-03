@@ -16,20 +16,19 @@ resource "google_compute_region_backend_service" "be" {
     name = "svc-${var.group.name}-${var.name}-be"
     health_checks = [module.service_common.regional_health_check_id]
     load_balancing_scheme = "INTERNAL"
-
-    // TODO: separate rigms for each version?
     backend {
       group = module.service_common.instance_group
     }
 }
 
 resource "google_compute_forwarding_rule" "forwarding_rule" {
-    name = "svc-${var.group.name}-${var.name}-forwarding-rule"
+    name = "svc-${var.group.name}-${var.name}"
     network = var.group.network
     subnetwork = var.group.subnetwork
     backend_service = google_compute_region_backend_service.be.id
     load_balancing_scheme = "INTERNAL"
     all_ports = true
+    service_label = "lb" // --> lb.svc-groupname-servicename.il7.region.lb.projectID.internal
 }
 
 resource "google_compute_firewall" "allow-internal" {

@@ -108,6 +108,6 @@ resource "google_compute_firewall" "allow_health_checks" {
     direction = "INGRESS"
     allow {
         protocol = "tcp"
-        ports = ["80"]
+        ports = [var.http_health_check_port]
     }
 }

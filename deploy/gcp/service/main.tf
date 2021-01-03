@@ -1,3 +1,17 @@
+module "container_vm_template" {
+    for_each = var.versions
+
+    source = "../container_vm"
+    name = "service-${var.name}-${each.key}-template"
+    container_image = each.value["container_image"]
+    host_to_container_ports = var.service_to_container_ports
+    preemptible = each.value["preemptible"]
+    machine_type = each.value["machine_type"]
+    network = var.network
+}
+
+// forwarding rule --> be service --> rigm --> instances
+
 resource "google_compute_region_instance_group_manager" "rigm" {
     name = "service-${var.name}-rigm"
     base_instance_name = "service-${var.name}-instances"
@@ -9,8 +23,8 @@ resource "google_compute_region_instance_group_manager" "rigm" {
     dynamic "version" {
         for_each = var.versions
         content {
-            name = version.value["name"]
-            instance_template = version.value["instance_template"]
+            name = version.key
+            instance_template = module.container_vm_template[version.key].self_link
             dynamic "target_size" {
                 for_each = version.value["target_size"] != null ? [1] : []
                 content {
@@ -67,7 +81,6 @@ resource "google_compute_forwarding_rule" "forwarding_rule" {
     name = "service-${var.name}-forwarding-rule"
     region = var.region
     backend_service = google_compute_region_backend_service.be.id
-    port_range = "80"
 }
 
 // TODO: adjust for internal
@@ -79,7 +92,7 @@ resource "google_compute_firewall" "allow-external" {
     }
     allow {
         protocol = "tcp"
-        ports = ["80", "8080"]
+        ports = ["80"]  // TODO: all ports in var.service_to_container_ports
     }
 }
 

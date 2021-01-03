@@ -13,13 +13,19 @@ variable "region" {
 }
 
 variable "versions" {
-    type = list(object({
-        name = string
-        instance_template = string
+    type = map(object({
+        container_image = object({
+            project = string
+            name = string
+            digest = string
+            image_url = string
+        })
+        machine_type = string
         target_size = optional(object({
             fixed = number
             percent = number
         }), null)
+        preemptible = optional(bool, false)
     }))
     description = "Versions to run."
 }
@@ -77,4 +83,9 @@ variable "pubsub_autoscale" {
     })
     default = null
     description = "PubSub subscription ID and per-instance handle rate to scale with."
+}
+
+variable "service_to_container_ports" {
+    type = map(string)
+    default = {}
 }

@@ -69,3 +69,8 @@ variable "service_to_container_ports" {
     type = map(string)
     default = {}
 }
+
+variable "service_account" {
+    type = string
+    default = null
+}

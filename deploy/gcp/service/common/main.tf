@@ -9,6 +9,7 @@ module "container_vm_template" {
     machine_type = each.value["machine_type"]
     network = var.group.network
     subnetwork = try(var.group.subnetwork, null)
+    service_account = var.service_account
 }
 
 // forwarding rule (int/ext) --> be service (int/ext) --> rigm (common) --> firewall (int/ext) -- > instances (common)

@@ -9,6 +9,7 @@ module "service_common" {
     max_replicas = var.max_replicas
     pubsub_autoscale = var.pubsub_autoscale
     service_to_container_ports = var.service_to_container_ports
+    service_account = var.service_account
 }
 
 resource "google_compute_region_backend_service" "be" {

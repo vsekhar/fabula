@@ -48,7 +48,7 @@ variable "internal_lb" {
 
 variable "service_account" {
     type = string
-    default = ""
+    default = null
     description = "Email address of service account"
 }
 

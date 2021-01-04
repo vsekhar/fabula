@@ -41,9 +41,12 @@ write_files:
     ExecStart=/usr/bin/docker run --name=${service_name} \
                                   --log-opt tag=\"${container_image_name}#{{.Name}}\" \
                                   --rm \
-                                  -u 2000 \
+                                  --user 2000 \
                                   %{~ for host_port, container_port in host_to_container_ports ~}
-                                  -p ${host_port}:${container_port} \
+                                  --publish ${host_port}:${container_port} \
+                                  %{~ endfor ~}
+                                  %{~ for name, value in env ~}
+                                  --env ${name}=${value} \
                                   %{~ endfor ~}
                                   ${container_image_name} ${ join(" ", args) }
     ExecStop=/usr/bin/docker stop ${service_name}

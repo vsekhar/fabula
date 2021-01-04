@@ -17,6 +17,11 @@ variable "args" {
     default = []
 }
 
+variable "env" {
+    type = map(string)
+    default = {}
+}
+
 variable "host_to_container_ports" {
     type = map(string)
     default = {}

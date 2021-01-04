@@ -14,12 +14,14 @@ resource "random_id" "tmpl" {
         container_image = jsonencode(var.container_image)
         machine_type = var.machine_type
         host_to_container_ports = jsonencode(var.host_to_container_ports)
-        args = join(" ", var.args)
+        args = jsonencode(var.args)
+        env = jsonencode(var.env)
         network = var.network
         subnetwork = var.subnetwork
         public_ip = var.public_ip
         preemptible = var.preemptible
         service_account = var.service_account
+        templatefile = file("${path.module}/gce_cloud-init.tmpl.yaml")
     }
 }
 
@@ -28,7 +30,9 @@ resource "google_compute_instance_template" "template" {
         create_before_destroy = true
     }
 
-    name = "${var.name}-${lower(random_id.tmpl.id)}" // name_prefix creates very long names
+    // name must be in "^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$"
+    // name_prefix
+    name = "${var.name}-${replace(lower(random_id.tmpl.id), "_", "-")}"
     tags = length(var.tags) > 0 ? var.tags : null
     labels = {
         // labels must be [a-z0-9_-] and at most 63 characters
@@ -53,7 +57,8 @@ resource "google_compute_instance_template" "template" {
                 service_name = var.name,
                 container_image_name = var.container_image.image_url
                 host_to_container_ports = var.host_to_container_ports
-                args = var.args
+                args = var.args != null ? var.args : []
+                env = var.env != null ? var.env : {}
             }
         )
         google-logging-enabled = "true"

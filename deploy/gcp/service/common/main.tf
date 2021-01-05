@@ -7,6 +7,7 @@ module "container_vm_template" {
     args = each.value["args"]
     env = each.value["env"]
     host_to_container_ports = var.service_to_container_ports
+    envoy_config = var.envoy_config
     preemptible = each.value["preemptible"]
     machine_type = each.value["machine_type"]
     network = var.group.network
@@ -26,7 +27,7 @@ resource "google_compute_region_instance_group_manager" "rigm" {
     region = data.google_client_config.current.region // seems to be required for this resource type...
     auto_healing_policies {
         health_check = google_compute_health_check.hc.id
-        initial_delay_sec = 180
+        initial_delay_sec = 300 // 5 mins
     }
     dynamic "version" {
         for_each = var.versions

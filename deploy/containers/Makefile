@@ -2,11 +2,9 @@ REPO_PROJECT_ID=fabula-resources
 
 .PHONY:
 
-all: hash.fabula.txt
-	echo ${PROJECT}
-	echo ${REPOROOT}
+all: fabula-digest.txt hello-digest.txt
 
-hash.%.txt: %.image_on_gcr
+%-digest.txt: %.image_on_gcr
 	gcloud container images list-tags \
 		--format='get(digest)' \
 		--filter=tags:latest gcr.io/${REPO_PROJECT_ID}/$* \

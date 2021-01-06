@@ -3,25 +3,31 @@ data "google_compute_image" "cos" {
     project = "cos-cloud"
 }
 
-resource "random_id" "tmpl" {
+module "template_id" {
+    source = "../../random_id"
+
     byte_length = 4
     keepers = {
         // Depend on all the variables used by google_compute_instance_template.template
         // so that we get a new random_id each time the variables to this module are
         // changed by the user. This is necessary because template names must be unique.
+        //
+        // Compound values below use hashes to reduce redundancy in diffs (actual changes
+        // to these values will be shown elsewhere in the diff).
         name = var.name
-        tags = join(" ", var.tags)
-        container_image = jsonencode(var.container_image)
+        tags = base64sha512(join(" ", var.tags))
+        container_image = base64sha512(jsonencode(var.container_image))
         machine_type = var.machine_type
-        host_to_container_ports = jsonencode(var.host_to_container_ports)
-        args = jsonencode(var.args)
-        env = jsonencode(var.env)
+        host_to_container_ports = base64sha512(jsonencode(var.host_to_container_ports))
+        envoy_config = base64sha512(jsonencode(var.envoy_config))
+        args = base64sha512(jsonencode(var.args))
+        env = base64sha512(jsonencode(var.env))
         network = var.network
         subnetwork = var.subnetwork
         public_ip = var.public_ip
         preemptible = var.preemptible
         service_account = var.service_account
-        templatefile = file("${path.module}/gce_cloud-init.tmpl.yaml")
+        templatefile = filebase64sha512("${path.module}/gce_cloud-init.tmpl.yaml")
     }
 }
 
@@ -30,9 +36,8 @@ resource "google_compute_instance_template" "template" {
         create_before_destroy = true
     }
 
-    // name must be in "^(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?)$"
-    // name_prefix
-    name = "${var.name}-${replace(lower(random_id.tmpl.id), "_", "-")}"
+    name = "${var.name}-${module.template_id.id}"
+    // name_prefix produces really long template names
     tags = length(var.tags) > 0 ? var.tags : null
     labels = {
         // labels must be [a-z0-9_-] and at most 63 characters
@@ -59,6 +64,7 @@ resource "google_compute_instance_template" "template" {
                 host_to_container_ports = var.host_to_container_ports
                 args = var.args != null ? var.args : []
                 env = var.env != null ? var.env : {}
+                envoy_config = var.envoy_config
             }
         )
         google-logging-enabled = "true"

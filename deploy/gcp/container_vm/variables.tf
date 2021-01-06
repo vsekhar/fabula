@@ -27,6 +27,17 @@ variable "host_to_container_ports" {
     default = {}
 }
 
+variable "envoy_config" {
+    type = object({
+        service_name = string
+        envoy_service_port = string
+        backend_protocol = string
+        backend_service_port = string
+    })
+    default = null
+    description = "If specified, envoy_config will deploy envoy V2 and have it forward requests from envoy_service_port to backend_service_port. The appropriate firewall settings and port forwarding will be automatically configured."
+}
+
 variable "network" {
     type = string
     default = null

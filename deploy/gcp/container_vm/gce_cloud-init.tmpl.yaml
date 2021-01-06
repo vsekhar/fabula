@@ -23,7 +23,24 @@ write_files:
               %{~ for host_port, c in host_to_container_ports ~}
               --match multiport --dports ${host_port} \
               %{~ endfor ~}
+              %{~ if envoy_config != null ~}
+              --match multiport --dports ${envoy_config.envoy_service_port} \
+              %{~ endif ~}
               -j ACCEPT
+
+- path: /etc/systemd/system/docker-credential-gcr.service
+  permissions: 0644
+  owner: root
+  content: |
+    [Unit]
+    Description=Configure Docker with GCR credentials
+    After=docker.service
+    Wants=docker.service
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=true
+    ExecStart=/usr/bin/docker-credential-gcr configure-docker --registries=gcr.io
 
 - path: /etc/systemd/system/${service_name}.service
   permissions: 0644
@@ -31,13 +48,13 @@ write_files:
   content: |
     [Unit]
     Description=${service_name} service
-    After=docker.service config-firewall.service
-    Wants=docker.service config-firewall.service
+    After=docker-credential-gcr.service config-firewall.service
+    Wants=docker-credential-gcr.service config-firewall.service
 
     [Service]
     Restart=always
     Environment="HOME=/home/${service_name}"
-    ExecStartPre=/usr/bin/docker-credential-gcr configure-docker
+    # ExecStartPre=/usr/bin/docker-credential-gcr configure-docker --registries=gcr.io
     ExecStart=/usr/bin/docker run --name=${service_name} \
                                   --log-opt tag=\"${container_image_name}#{{.Name}}\" \
                                   --rm \
@@ -48,13 +65,49 @@ write_files:
                                   %{~ for name, value in env ~}
                                   --env ${name}=${value} \
                                   %{~ endfor ~}
-                                  ${container_image_name} ${ join(" ", args) }
+                                  ${container_image_name} \
+                                  %{~ for arg in args ~}
+                                  ${ arg } \
+                                  %{~ endfor }
     ExecStop=/usr/bin/docker stop ${service_name}
     ExecStopPost=/usr/bin/docker rm ${service_name}
+
+%{ if envoy_config != null }
+- path: /etc/systemd/system/envoy.service
+  permissions: 0644
+  owner: root
+  content: |
+    [Unit]
+    Description=Envoy
+    After=docker-credential-gcr.service config-firewall.service ${service_name}.service
+    Wants=docker-credential-gcr.service config-firewall.service ${service_name}.service
+
+    [Service]
+    Restart=always
+    Environment="HOME=/home/envoy"
+    # ExecStartPre=/usr/bin/docker-credential-gcr configure-docker --registries=gcr.io
+    ExecStart=/usr/bin/docker run --name=envoy \
+                                  --log-opt tag=\"envoy\" \
+                                  --rm \
+                                  --user 2000 \
+                                  --net container:${service_name} \
+                                  gcr.io/endpoints-release/endpoints-runtime:2 \
+                                  --service ${envoy_config.service_name} \
+                                  --listener_port ${envoy_config.envoy_service_port} \
+                                  --backend grpc://127.0.0.1:${envoy_config.backend_service_port} \
+                                  --rollout_strategy managed
+    ExecStop=/usr/bin/docker stop envoy
+    ExecStopPost=/usr/bin/docker rm envoy
+%{ else }
+# No envoy_config provided. Envoy will not be deployed.
+%{ endif }
 
 runcmd:
 - systemctl daemon-reload
 - systemctl start ${service_name}.service
+%{ if envoy_config != null ~}
+- systemctl start envoy.service
+%{ endif ~}
 
 # Optional once-per-boot setup. For example: mounting a PD.
 # bootcmd:

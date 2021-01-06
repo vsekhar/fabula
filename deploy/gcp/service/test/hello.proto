@@ -14,6 +14,7 @@ service Hello {
     rpc Hello(HelloRequest) returns (HelloResponse) {
         option (google.api.http) = {
             // NB: Envoy fails to register root "/"
+            // https://github.com/envoyproxy/envoy/issues/14561
             get: "/root"
         };
     }

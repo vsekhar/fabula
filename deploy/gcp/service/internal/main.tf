@@ -9,12 +9,10 @@ module "service_common" {
     max_replicas = var.max_replicas
     pubsub_autoscale = var.pubsub_autoscale
     service_to_container_ports = var.service_to_container_ports
-    envoy_config = var.envoy_config
-    service_account = var.service_account
 }
 
 resource "google_compute_region_backend_service" "be" {
-    name = "svc-${var.group.name}-${var.name}-be"
+    name = "svc-${var.group.name}-${var.name}"
     health_checks = [module.service_common.regional_health_check_id]
     load_balancing_scheme = "INTERNAL"
     backend {
@@ -29,7 +27,7 @@ resource "google_compute_forwarding_rule" "forwarding_rule" {
     backend_service = google_compute_region_backend_service.be.id
     load_balancing_scheme = "INTERNAL"
     all_ports = true
-    service_label = "lb" // --> lb.svc-groupname-servicename.il7.region.lb.projectID.internal
+    service_label = "lb" // --> lb.svc-groupname-servicename.il4.region.lb.projectID.internal
 }
 
 resource "google_compute_firewall" "allow-internal" {

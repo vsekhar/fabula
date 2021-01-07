@@ -59,11 +59,18 @@ module "test_group" {
     name = "test"
 }
 
+module "svc_id" {
+    source = "../../../random_id"
+    byte_length = 4
+}
+
 resource "google_endpoints_service" "grpc_service" {
-    service_name = "svctest.endpoints.${var.project_id}.cloud.goog"
+    // services have a mandatory 30-day deletion process, so we need to
+    // use a new name each time.
+    service_name = "svctest-${module.svc_id.id}.endpoints.${var.project_id}.cloud.goog"
     grpc_config = templatefile("${path.module}/endpoints.tmpl.yaml",
         {
-            project_id = var.project_id
+            service_name = "svctest-${module.svc_id.id}.endpoints.${var.project_id}.cloud.goog"
         }
     )
     protoc_output_base64 = filebase64("${path.module}/api_descriptor.pb")
@@ -85,25 +92,21 @@ module "external_hello_service" {
     service_to_container_ports = {
         "80" = "8081" // http(80) --> envoy(8081) --> server(8080)
     }
-    envoy_config = {
-        // TODO: make envoy config per-version
-        service_name = google_endpoints_service.grpc_service.service_name
-        // TODO: envoy_to_container_ports
-        envoy_service_port = 8081
-        backend_protocol = "grpc"
-        backend_service_port = 8080 // internal container port (process listen port)
-    }
-    service_account = google_service_account.test.email
 
     versions = {
         "hello-v2" = {
             container_image = data.google_container_registry_image.hello-grpc
             machine_type = "e2-small"
             preemptible = true
-            args = [
-                "-port 8080",
-            ]
+            args = ["-port 8080"]
             // env = {}
+            service_account = google_service_account.test.email
+            envoy_config = {
+                service_name = google_endpoints_service.grpc_service.service_name
+                envoy_service_port = 8081
+                backend_protocol = "grpc"
+                backend_service_port = 8080
+            }
         }
     }
 }
@@ -126,12 +129,12 @@ module "internal_hello_service" {
         "80" = "8080"
         "9619" = "9619"
     }
-    service_account = google_service_account.test.email
 
     versions = {
         "hello-v1" = {
             container_image = data.google_container_registry_image.hello-app-v1
             machine_type = "e2-small"
+            service_account = google_service_account.test.email
             preemptible = true
             // args = []
             // env = {}

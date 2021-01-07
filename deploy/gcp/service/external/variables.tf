@@ -32,6 +32,13 @@ variable "versions" {
             percent = number
         }), null)
         preemptible = optional(bool, false)
+        service_account = optional(string, "")
+        envoy_config = optional(object({
+            service_name = string
+            envoy_service_port = string
+            backend_protocol = string
+            backend_service_port = string
+        }), null)
     }))
     description = "Versions to run."
 }
@@ -46,12 +53,6 @@ variable "internal_lb" {
     type = bool
     default = false
     description = "Allocate an internal load-balanced IP address to this service."
-}
-
-variable "service_account" {
-    type = string
-    default = null
-    description = "Email address of service account"
 }
 
 variable "http_health_check_path" {
@@ -88,15 +89,4 @@ variable "pubsub_autoscale" {
 variable "service_to_container_ports" {
     type = map(string)
     default = {}
-}
-
-variable "envoy_config" {
-    type = object({
-        service_name = string
-        envoy_service_port = string
-        backend_protocol = string
-        backend_service_port = string
-    })
-    default = null
-    description = "If specified, envoy_config will deploy envoy V2 and have it forward requests from envoy_service_port to backend_service_port. The appropriate firewall settings and port forwarding will be automatically configured."
 }

@@ -1,7 +1,5 @@
 #cloud-config
 
-# TODO: pass arguments to server
-
 users:
 - name: ${service_name}
   uid: 2000
@@ -72,7 +70,7 @@ write_files:
     ExecStop=/usr/bin/docker stop ${service_name}
     ExecStopPost=/usr/bin/docker rm ${service_name}
 
-%{ if envoy_config != null }
+%{ if envoy_config != null ~}
 - path: /etc/systemd/system/envoy.service
   permissions: 0644
   owner: root
@@ -98,9 +96,9 @@ write_files:
                                   --rollout_strategy managed
     ExecStop=/usr/bin/docker stop envoy
     ExecStopPost=/usr/bin/docker rm envoy
-%{ else }
+%{ else ~}
 # No envoy_config provided. Envoy will not be deployed.
-%{ endif }
+%{ endif ~}
 
 runcmd:
 - systemctl daemon-reload

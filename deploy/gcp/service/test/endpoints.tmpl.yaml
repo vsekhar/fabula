@@ -1,7 +1,7 @@
 type: google.api.Service
 config_version: 3
 
-name: svctest.endpoints.${project_id}.cloud.goog
+name: ${service_name}
 
 title: Service test gRPC API
 apis:

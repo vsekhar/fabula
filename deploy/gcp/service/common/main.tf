@@ -7,12 +7,12 @@ module "container_vm_template" {
     args = each.value["args"]
     env = each.value["env"]
     host_to_container_ports = var.service_to_container_ports
-    envoy_config = var.envoy_config
+    envoy_config = each.value["envoy_config"]
     preemptible = each.value["preemptible"]
     machine_type = each.value["machine_type"]
     network = var.group.network
     subnetwork = try(var.group.subnetwork, null)
-    service_account = var.service_account
+    service_account = each.value["service_account"]
 }
 
 // forwarding rule (int/ext) --> be service (int/ext) --> rigm (common) --> firewall (int/ext) -- > instances (common)
@@ -22,8 +22,8 @@ module "container_vm_template" {
 data "google_client_config" "current" {}
 
 resource "google_compute_region_instance_group_manager" "rigm" {
-    name = "svc-${var.group.name}-${var.name}-rigm"
-    base_instance_name = "svc-${var.group.name}-${var.name}-inst"
+    name = "svc-${var.group.name}-${var.name}"
+    base_instance_name = "svc-${var.group.name}-${var.name}"
     region = data.google_client_config.current.region // seems to be required for this resource type...
     auto_healing_policies {
         health_check = google_compute_health_check.hc.id
@@ -46,7 +46,7 @@ resource "google_compute_region_instance_group_manager" "rigm" {
 }
 
 resource "google_compute_region_autoscaler" "autoscaler" {
-    name = "svc-${var.group.name}-${var.name}-autoscaler"
+    name = "svc-${var.group.name}-${var.name}"
     provider = google-beta // for filter and single_instance_assignment
     target = google_compute_region_instance_group_manager.rigm.id
     autoscaling_policy {

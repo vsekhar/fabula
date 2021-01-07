@@ -59,7 +59,7 @@ resource "google_compute_instance_template" "template" {
     metadata = {
         user-data = templatefile("${path.module}/gce_cloud-init.tmpl.yaml",
             {
-                service_name = var.name,
+                service_name = var.name
                 container_image_name = var.container_image.image_url
                 host_to_container_ports = var.host_to_container_ports
                 args = var.args != null ? var.args : []

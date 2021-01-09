@@ -6,6 +6,7 @@ users:
 
 write_files:
 
+%{ if length(host_to_container_ports) > 0 ~}
 # https://cloud.google.com/container-optimized-os/docs/how-to/firewall
 - path: /etc/systemd/system/config-firewall.service
   permissions: 0644
@@ -21,10 +22,8 @@ write_files:
               %{~ for host_port, c in host_to_container_ports ~}
               --match multiport --dports ${host_port} \
               %{~ endfor ~}
-              %{~ if envoy_config != null ~}
-              --match multiport --dports ${envoy_config.envoy_service_port} \
-              %{~ endif ~}
               -j ACCEPT
+%{ endif ~}
 
 - path: /etc/systemd/system/docker-credential-gcr.service
   permissions: 0644
@@ -46,27 +45,29 @@ write_files:
   content: |
     [Unit]
     Description=${service_name} service
-    After=docker-credential-gcr.service config-firewall.service
-    Wants=docker-credential-gcr.service config-firewall.service
 
     [Service]
     Restart=always
     Environment="HOME=/home/${service_name}"
     # ExecStartPre=/usr/bin/docker-credential-gcr configure-docker --registries=gcr.io
-    ExecStart=/usr/bin/docker run --name=${service_name} \
-                                  --log-opt tag=\"${container_image_name}#{{.Name}}\" \
-                                  --rm \
-                                  --user 2000 \
-                                  %{~ for host_port, container_port in host_to_container_ports ~}
-                                  --publish ${host_port}:${container_port} \
-                                  %{~ endfor ~}
-                                  %{~ for name, value in env ~}
-                                  --env ${name}=${value} \
-                                  %{~ endfor ~}
-                                  ${container_image_name} \
-                                  %{~ for arg in args ~}
-                                  ${ arg } \
-                                  %{~ endfor }
+    ExecStart= \
+          %{~ if length(split("@", container_image_name)) != 2 ~}
+          /usr/bin/docker pull ${container_image_name} && \
+          %{~ endif ~}
+          /usr/bin/docker run --name=${service_name} \
+              --log-opt tag=\"${container_image_name}#{{.Name}}\" \
+              --rm \
+              --user 2000 \
+              %{~ for host_port, container_port in host_to_container_ports ~}
+              --publish ${host_port}:${container_port} \
+              %{~ endfor ~}
+              %{~ for name, value in env ~}
+              --env ${name}=${value} \
+              %{~ endfor ~}
+            ${container_image_name} \
+              %{~ for arg in args ~}
+              ${ arg } \
+              %{~ endfor }
     ExecStop=/usr/bin/docker stop ${service_name}
     ExecStopPost=/usr/bin/docker rm ${service_name}
 
@@ -77,8 +78,6 @@ write_files:
   content: |
     [Unit]
     Description=Envoy
-    After=docker-credential-gcr.service config-firewall.service ${service_name}.service
-    Wants=docker-credential-gcr.service config-firewall.service ${service_name}.service
 
     [Service]
     Restart=always
@@ -102,6 +101,10 @@ write_files:
 
 runcmd:
 - systemctl daemon-reload
+- docker-credential-gcr.service
+%{ if length(host_to_container_ports) > 0 ~}
+- systemctl start config-firewall.service
+%{ endif ~}
 - systemctl start ${service_name}.service
 %{ if envoy_config != null ~}
 - systemctl start envoy.service

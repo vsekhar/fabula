@@ -24,9 +24,9 @@ func relNow() relMoment {
 	return relMoment{rel: t.Nano()}
 }
 
-// Sub returns the Duration from s to r.
+// sub returns the Duration from s to r.
 //
-// Sub is equivalent to calling s.to(r).
+// sub is equivalent to calling s.to(r).
 func (r relMoment) sub(s relMoment) time.Duration {
 	return time.Duration(r.rel - s.rel)
 }

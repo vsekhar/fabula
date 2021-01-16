@@ -1,7 +1,7 @@
 output "self_link" {
-    value = "http://${google_compute_forwarding_rule.forwarding_rule.ip_address}"
+    value = try("http://${google_compute_forwarding_rule.forwarding_rule[0].ip_address}", null)
 }
 
 output "ip" {
-    value = google_compute_forwarding_rule.forwarding_rule.ip_address
+    value = try(google_compute_forwarding_rule.forwarding_rule[0].ip_address, null)
 }

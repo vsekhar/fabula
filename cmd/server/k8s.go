@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
+	"cloud.google.com/go/compute/metadata"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 	log "github.com/sirupsen/logrus"
@@ -17,10 +19,34 @@ import (
 
 var errNotInCluster = rest.ErrNotInCluster
 
+func onGCE() bool {
+	return metadata.OnGCE()
+}
+
+func onK8s() bool {
+	_, ok := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+	if ok {
+		return true
+	}
+	// Slower method
+	ips, err := net.LookupIP("kubernetes.local.svc")
+	switch {
+	case err != nil:
+		return false
+	case len(ips) > 0:
+		return true
+	}
+	return false
+}
+
 func getPodName() (string, error) {
+	_, ink8s := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+	if !ink8s {
+		return "", errNotInCluster
+	}
 	name, ok := os.LookupEnv("K8S_POD_NAME")
 	if !ok || name == "" {
-		return "", errors.New("K8S_POD_NAME environment variable not set")
+		return "", errors.New("K8S_POD_NAME environment variable must be set in pod spec")
 	}
 	return name, nil
 }
@@ -37,7 +63,7 @@ func populateSerfFromK8s(ctx context.Context, a *agent.Agent) error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("Namespace from clientcmd: %s", namespace)
+		log.Infof("Namespace from clientcmd: %s", namespace)
 	*/
 
 	config, err := rest.InClusterConfig()
@@ -53,7 +79,7 @@ func populateSerfFromK8s(ctx context.Context, a *agent.Agent) error {
 		return errors.New("K8S_NAMESPACE environment variable not set")
 	}
 	myIP := a.Serf().LocalMember().Addr.String()
-	log.Printf("[DEBUG] local IP according to Serf: %s", myIP)
+	log.Debugf("local IP according to Serf: %s", myIP)
 
 	go func() {
 		const maxSleep = 30 * time.Second
@@ -78,22 +104,22 @@ func populateSerfFromK8s(ctx context.Context, a *agent.Agent) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("[DEBUG] Found %d total pods via k8s", len(list.Items))
+			log.Debugf("Found %d total pods via k8s", len(list.Items))
 			for _, p := range list.Items {
-				log.Printf("[DEBUG] main: got k8s pod IP: '%s'", p.Status.PodIP)
+				log.Debugf("main: got k8s pod IP: '%s'", p.Status.PodIP)
 				if _, ok := ipSet[p.Status.PodIP]; !ok {
 					toAdd = append(toAdd, p.Status.PodIP)
 				}
 			}
-			log.Printf("[DEBUG] Joining %d new pods via k8s", len(toAdd))
+			log.Debugf("Joining %d new pods via k8s", len(toAdd))
 			for i := range toAdd {
 				toAdd[i] = fmt.Sprintf("%s:%d", toAdd[i], *controlPort)
 			}
 			joined, err := a.Serf().Join(toAdd, false)
 			if err != nil {
-				log.Printf("[ERROR] %s", err)
+				log.Errorf("%s", err)
 			}
-			log.Printf("[DEBUG] Joined %d new pods via k8s", joined)
+			log.Debugf("Joined %d new pods via k8s", joined)
 
 			sleepTime := time.Duration(alive) * sleepPerLiveNode
 			if sleepTime > maxSleep {

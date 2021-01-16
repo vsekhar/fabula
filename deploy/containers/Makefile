@@ -8,7 +8,7 @@ all: fabula-digest.txt hello-digest.txt
 	gcloud container images list-tags \
 		--format='get(digest)' \
 		--filter=tags:latest gcr.io/${REPO_PROJECT_ID}/$* \
-		> $@
+		| tee $@
 
 %.image_on_gcr: .PHONY Dockerfile.% reporoot project
 	gcloud builds submit ${REPOROOT} \

@@ -1,7 +1,3 @@
-# Invoke with repo root as context and this file as a parameter
-#
-#    deploy/server$ docker build --file Dockerfile ../../
-
 # FROM golang:1.15.6-alpine amd64 as builder
 FROM golang@sha256:26530e208a08a6211b85fef395447e5b62d3f657f43856a30d65ee27d75ac778 as builder
 

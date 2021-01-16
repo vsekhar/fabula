@@ -1,0 +1,25 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/internal/api/broadcast";
+
+import "google/protobuf/timestamp.proto";
+
+import "ref.proto";
+
+// SequenceBroadcast is the message sent to all nodes by the sequencer (the root
+// batcher) each time a new sequence entry is written to storage.
+//
+// SequenceBroadcast messages are processed on a best effort basis: missing a
+// message does not affect correctness. However, nodes should report to
+// monitoring the number of SequenceBroadcast messages they miss (using the
+// sequential seq_no field). Falling too far behind can indicate overloaded
+// nodes that could slow the recovery of the entire system should an active
+// seqeuncer fail.
+message SequenceBroadcast {
+    SequenceRef entry = 1; // for use as prior and left_child
+    uint64 seq_no = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    uint64 num_entries = 4;
+    google.protobuf.Timestamp prior_timestamp = 5; // for rate calculation
+}

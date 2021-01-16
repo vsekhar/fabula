@@ -9,18 +9,8 @@ data "terraform_remote_state" "bucket" {
     }
 }
 
-resource "google_storage_bucket_iam_binding" "fabula_create" {
+resource "google_storage_bucket_iam_member" "fabula_create" {
     bucket = data.terraform_remote_state.bucket.outputs.pack_storage_name
     role = "roles/storage.objectCreator"
-    members = [
-        "serviceAccount:${google_service_account.fabula.email}",
-    ]
-}
-
-resource "google_storage_bucket_iam_binding" "fabula_view" {
-    bucket = data.terraform_remote_state.bucket.outputs.pack_storage_name
-    role = "roles/storage.objectViewer"
-    members = [
-        "serviceAccount:${google_service_account.fabula.email}",
-    ]
+    member = "serviceAccount:${google_service_account.storer.email}"
 }

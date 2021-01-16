@@ -49,25 +49,26 @@ write_files:
     [Service]
     Restart=always
     Environment="HOME=/home/${service_name}"
-    # ExecStartPre=/usr/bin/docker-credential-gcr configure-docker --registries=gcr.io
-    ExecStart= \
+    ExecStartPre= \
           %{~ if length(split("@", container_image_name)) != 2 ~}
-          /usr/bin/docker pull ${container_image_name} && \
+          /usr/bin/docker pull ${container_image_name}
+          %{~ else ~}
+          /bin/true
           %{~ endif ~}
-          /usr/bin/docker run --name=${service_name} \
-              --log-opt tag=\"${container_image_name}#{{.Name}}\" \
-              --rm \
-              --user 2000 \
-              %{~ for host_port, container_port in host_to_container_ports ~}
-              --publish ${host_port}:${container_port} \
-              %{~ endfor ~}
-              %{~ for name, value in env ~}
-              --env ${name}=${value} \
-              %{~ endfor ~}
-            ${container_image_name} \
-              %{~ for arg in args ~}
-              ${ arg } \
-              %{~ endfor }
+    ExecStart=/usr/bin/docker run --name=${service_name} \
+                --log-opt tag=\"${container_image_name}#{{.Name}}\" \
+                --rm \
+                --user 2000 \
+                %{~ for host_port, container_port in host_to_container_ports ~}
+                --publish ${host_port}:${container_port} \
+                %{~ endfor ~}
+                %{~ for name, value in env ~}
+                --env ${name}=${value} \
+                %{~ endfor ~}
+              ${container_image_name} \
+                %{~ for arg in args ~}
+                ${ arg } \
+                %{~ endfor }
     ExecStop=/usr/bin/docker stop ${service_name}
     ExecStopPost=/usr/bin/docker rm ${service_name}
 

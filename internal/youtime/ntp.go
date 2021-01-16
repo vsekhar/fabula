@@ -1,7 +1,7 @@
 package youtime
 
 import (
-	"net"
+	"math"
 	"time"
 )
 
@@ -25,10 +25,21 @@ type packet struct {
 	TxTimeFrac     uint32 // transmit time frac
 }
 
-const ntpEpochOffset = 2208988800
-const ntpTimeout = 500 * time.Millisecond
+const ntpEpochOffset = 2208988800 // seconds
 
-type ntpConn struct {
-	hostname string
-	nc       net.Conn
+func ntpToTime(sec, frac uint32) time.Time {
+	// secs := float64(rsp.RxTimeSec) - ntpEpochOffset
+	secs := int64(sec) - ntpEpochOffset
+	nanos := (int64(frac) * 1e9) >> 32
+	return time.Unix(secs, nanos)
+}
+
+func timeToNTP(t time.Time) (sec, frac uint32) {
+	secs := t.Unix() + ntpEpochOffset
+	nanos := int64(t.Nanosecond())
+	nanos = (nanos << 32) / 1e9
+	if secs > math.MaxUint32 {
+		panic("overflow")
+	}
+	return uint32(secs), uint32(nanos) + 1 // because of course
 }

@@ -1,0 +1,12 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/internal/api/storer";
+
+import "ref.proto";
+import "storage.proto";
+
+message StoreRequest {
+    Batch batch = 1;
+    BatchRef ref = 2; // computed by packer
+}

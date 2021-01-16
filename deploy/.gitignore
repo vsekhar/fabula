@@ -1,4 +1,5 @@
 .terraform/
-.terraform.tfstate.lock.info
+.terraform.lock.*
+.terraform.tfstate.lock.*
 terraform.tfstate*
 terraform.tfvars*

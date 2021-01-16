@@ -1,0 +1,21 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/pkg/api/regionpb";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.EnumValueOptions {
+    bytes name = 58298; // used for hashing the region
+}
+
+enum Region {
+    // keep in sync with deploy/regions/main.tf
+    REGION_UNSPECIFIED = 0;
+    REGION_US = 1 [(name) = "US"];
+    REGION_EU = 2 [(name) = "EU"];
+    REGION_JP = 3 [(name) = "JP"];
+    REGION_SIN = 4 [(name) = "SIN"];
+    REGION_AUS = 5 [(name) = "AUS"];
+    REGION_IN = 6 [(name) = "IN"];
+}

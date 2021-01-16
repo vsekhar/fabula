@@ -57,17 +57,6 @@ resource "google_compute_region_autoscaler" "autoscaler" {
         cpu_utilization {
             target = 0.6
         }
-
-        // https://cloud.google.com/compute/docs/autoscaler/scaling-stackdriver-monitoring-metrics#example_using_instance_assignment_to_scale_based_on_a_queue
-        dynamic "metric" {
-            for_each = var.pubsub_autoscale != null ? [1] : []
-            content {
-                name = "pubsub.googleapis.com/subscription/num_undelivered_messages"
-                type = "GAUGE"
-                filter = "resource.type = pubsub_subscription AND resource.label.subscription_id = ${var.pubsub_autoscale.subscription}"
-                single_instance_assignment = var.pubsub_autoscale.single_instance_assignment
-            }
-        }
     }
 }
 

@@ -6,7 +6,7 @@ Distributed databases (like bitcoin) allow you to trust no one. Low throughput, 
 
 Decentralized infrastructure (like PKI, certificate authorities, DNS) require you to trust *some* entities. High throughput, mostly low risk.
 
-Decentralized is the way to go.
+Verified decentralized infrastructure allows you to trust no one. High throughput, low risk.
 
 ## Notaries
 
@@ -90,7 +90,111 @@ The client has to keep trying, adjusting time stamps, until it is able to log an
 
 > **Tickets**: an alternative is to have clients send the data and request a ticket with a timestamp from a notary. A ticket is not a notarization. The timestamp of the ticket is the earliest possible time the notary will subsequently accept a logging request. This gives clients a wider window in which to choose timestamps but it's unclear how the notary will maintain pending tickets in a verifiable way.
 
-the notary will accept for a later notarization.
+## Performance
+
+Sharding to 256 trees produces ~2KB summaries. How fast are writes? ~400ms latency... (see `deploy/storage/perfdiag.txt`) 2 writes per second per shard? 512 QPS?
+
+Sequential writes, with probing (80 threads) --> 645 ms/write:
+
+```bash
+$ go test -benchmem -run=^$ github.com/vsekhar/fabula/pkg/benchgcs -bench "^(BenchmarkAppendParallel)$" -benchtime 60s
+goos: linux
+goarch: amd64
+pkg: github.com/vsekhar/fabula/pkg/benchgcs
+BenchmarkAppendParallel-8            100         645055552 ns/op                 1.00 collisions/op             19.0 probes/op  108473856 B/op     10385 allocs/op
+PASS
+ok      github.com/vsekhar/fabula/pkg/benchgcs  65.935s
+```
+
+Databases may have same issue.
+
+## Time ranges
+
+Notarizations don't get timestamps, they get time ranges. Notaries wait until local time minus global uncertainty is past the second timestamp of the entry. Can drop entries into storage without sequencing. Looser notion of order, only among entries those ranges don't overlap.
+
+How is it made verifiable? Lexicographic order? But how hashed? Delay until processed. Processing is serialized. Can we batch it? Do the intervals help us?
+
+Can't key off intervals directly. Produces hotspot near most recent intervals.
+
+## Time ranges and PubSub
+
+* PubSub topic
+* One subscription for each level (using filtering)
+  * Level stored as an attribute of messages
+* Packers collect messages at a specific level for some amount of time until a threshold is reached (time or number of messages)
+* Packers order the messages they received by beginning and end timestamps
+* Packers hash the summary of these messages
+* Packers write the summary as an entry
+* Packers append summary hash to metadata of included messages (using metadataGeneration to ensure consistency)
+* Packers submit the entry to PubSub with attribute for next level up
+* Packers acknowledge all included entries
+  * It's ok for a given entry to be included in more than one upper level summary
+* PubSub ensures each entry is included in at least one pack further up
+* Top level subscription is essentially a stream of global summaries
+* How high to go? How to know which one to read?
+* Each entry contains in its metadata a pointer to a higher level entry that includes it
+
+* Higher level entries (maybe the highest level one?) can be delievered strictly in order and has its previous
+  * Should mid-level entries be sequenced?
+  * Sequence based on level? E.g. each one has an ordering key that is shorter until the root one which has a single ordering key?
+  * Ordering key is just a prefix, level of a message is just length of its prefix
+    * Packers strip prefix down to increase the level of a message
+    * How to pack across ordering keys?
+    * Each pack might be ordering messages at multiple levels. OK?
+  * Ordering guarantees that the arrival of a message with a given ordering key implies the processing of all messages before it
+    * If a prior message is NACK'd, then the current message will be redelivered somewhere as part of the redelivery of that NACK'd message)
+
+* Summary entries don't guarantee a timestamp HWM... There could be earlier entries still in the system.
+  * Just look at the entry's attributes in GCS to see if it has been summarized
+  * Follow entry attributes up as far as you like until you are satistifed of its inclusion
+* What about pubsub timeout?
+
+* Throughput
+  * PubSub limits publish throughput to 1MB/s for each value of OrderingKey ([source - internal](https://docs.google.com/document/d/1DRIG8kkH8jqEBXRtJrp9vni0nE_uFtRFPPaeMuj1l6Y/edit#heading=h.3xuxqryq3rjf))
+  * Message: 64 byte hash + 20 bytes timestamp + 16 byte message_id + 8 byte ordering key = 108
+    * NB: PubSub _bills_ for min. 1000 bytes per message ([source](https://cloud.google.com/pubsub/pricing#message_delivery_pricing))
+  * Goal of 1B events/s == 108GiB/s --> min. 108000 OrderingKeys --> 17 bit prefix at lowest level
+    * Though likely rate limited by GCS
+
+* Timestamps
+  * Timestamps in pubsub are only available on the subscriber end, not the publisher end
+  * Can't get add a timestamp to the message because it will not obey causality
+    * PubSub ordering uses server-determined timestamp (`PublishTime`), not client timestamp (`SubmitTime`)
+
+```bash
+$ go run cmd/psops/psops.go -verbose -n 10 drain
+...
+2020/09/28 20:21:29 Drained Ft5gqaj6vSU... (ID: 1577689094528315, OrderingKey: Fg, SubmitTime: 2020-09-29 00:21:25.790383342 +0000 UTC)
+2020/09/28 20:21:29 Drained Fhvr0pPQe8U... (ID: 1577689094528316, OrderingKey: Fg, SubmitTime: 2020-09-29 00:21:25.790640644 +0000 UTC)
+2020/09/28 20:21:29 Drained FghMyfm3_BI... (ID: 1577689094528317, OrderingKey: Fg, SubmitTime: 2020-09-29 00:21:25.790326235 +0000 UTC)
+```
+
+* Put the entire tree in PubSub (put summaries in the data fields of PubSub)
+  * Separate subscriber, filtering on summaries, that persist to GCS
+  * Serve from GCS
+* This exploits the semantics of PubSub message ordering and eliminates the need to check GCS for the last pack
+  * CAVEAT: summaries lose information, once a lower level entry is acked, its contents are gone
+  * CAVEAT: How do you get the last entry of a summary for chaining?
+    * If a server goes down, need to find the last highest value
+    * Can we enbed these in messages somehow? Server going down still results in discontinuity...
+    * Need to persist this value
+    * --> GCS...
+    * Sequencing requires dependence on _ordering_ and _content_
+    * PubSub supports no dependence between values
+    * PubSub + ordering adds only ordering dependence, not content dependence
+    * Submit a continuation entry? Can't. Continuation needs to get ahead of the entires it continues
+    * Packers probe GCS to find last seq_no for their prefix, load it, cache its seq_no and hash
+    * Packers write hex(prefix)-seq_no.pack with DoesNotExist condition, cache for next pack
+    * Clients do binary search on a prefix to find an entry, knowing that timestamp ranges covered by each pack in a prefix sequence are distinct
+      * Cache timestamp bounds along the way
+      * Packs don't change, so can persist this index somewhere and load it to warm a client
+        * hex(prefix)-timestamp.earliest-timestamp.latest.index
+          * Contains records mapping {timestamp.earliest-timestamp.latest} --> seq_no
+        * can be lazily written and can overlap (just used to build an immutable cache in client memory)
+        * Indexer task?
+    * PubSub handles aggregating messages and stably assigning them to packer tasks, ensuring packers are likely to be efficient in this way
+
+------------------
 
 Single-notary:
 
@@ -149,7 +253,7 @@ The document is now duly notarized with a timestamp of 35. Since each notary com
 
 Notaries can reject DocumentTimestamp that is in the past (violating causality) or too far in the future (requiring a lengthy commit-wait). Importantly, each notary can make this policy determination locally, according to their local clocks.
 
-#### Attacking causalilty
+### Attacking causalilty
 
 It is not possible for notaries to fake causal violations for other notaries.
 
@@ -276,7 +380,7 @@ As a result, only _one_ honest notary will result in external consistency for _a
       * Sure, but they'll all start off untrusted and so having little to no impact
       * How do they get trusted? By notarizing with timestamps in close proximity to other notaries, correctly logging those notarizations, correctly producing proofs of those log entries, etc...
       * By that point, your "attackers" have built a new and robust infrastructure for keeping time...
-      * MFA: https://xkcd.com/810/
+      * MFA: [https://xkcd.com/810/]
       * Remember: trust between notaries is different from trust between users and notaries
         * Notaries only trust each other to give them a good esimate of the time, to reduce their own local estimate of uncertainty
         * Users trust notaries to consistenly notarize, log and prove log entries

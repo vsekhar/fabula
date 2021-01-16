@@ -1,0 +1,28 @@
+# FROM golang:1.15.6-alpine amd64 as builder
+FROM golang@sha256:26530e208a08a6211b85fef395447e5b62d3f657f43856a30d65ee27d75ac778 as builder
+
+# create non-root user from here (distroless/static doesn't have a shell)
+RUN addgroup fabulagroup
+RUN adduser --disabled-password --gecos "" --no-create-home --ingroup fabulagroup fabulauser
+
+WORKDIR /app
+
+# Get dependencies early so they can be cached by Docker
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+ADD go.mod /app
+ADD go.sum /app
+RUN go mod download
+# RUN go mod verify
+
+# build app
+ADD . /app
+RUN go build -v -ldflags='-w -s -extldflags "-static"' -o storer ./cmd/storer
+
+# runtime image
+FROM gcr.io/distroless/static
+COPY --from=builder /app/storer /storer
+COPY --from=builder /etc/passwd /etc/passwd
+USER fabulauser
+ENTRYPOINT ["/storer"]

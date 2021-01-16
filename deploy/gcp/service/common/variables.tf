@@ -65,15 +65,6 @@ variable "max_replicas" {
     default = 10
 }
 
-variable "pubsub_autoscale" {
-    type = object({
-        subscription = string
-        single_instance_assignment = number
-    })
-    default = null
-    description = "PubSub subscription ID and per-instance handle rate to scale with."
-}
-
 variable "service_to_container_ports" {
     type = map(string)
     default = {}

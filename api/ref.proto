@@ -1,0 +1,30 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/pkg/api/refpb";
+
+message Entry {
+    //   h := sha3.New512()
+    //   h.Write(document_from_user)
+    //   h.Write(salt_from_server)
+    //   notarization_sha3512 = h.Sum()
+    bytes notarization_sha3512 = 1;
+}
+
+message BatchRef {
+    //   h := sha3.New512()
+    //   h.Write(batch.batches...)
+    //   h.Write(batch.entries...)
+    //   batch_sha3512 = h.Sum()
+    bytes batch_sha3512 = 1;
+}
+
+message SequenceRef {
+    //   h := sha3.New512()
+    //   h.Write(sequence_entry.root_batch)
+    //   h.Write(sequence_entry.timestamp)
+    //   h.Write(sequence_entry.prior.sequence_sha3512)
+    //   h.Write(sequence_entry.left_child().sequence_sha3512) // if non-leaf
+    //   sequence_sha3512 = h.Sum()
+    bytes sequence_sha3512 = 1;
+}

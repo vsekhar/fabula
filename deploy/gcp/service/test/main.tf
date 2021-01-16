@@ -30,22 +30,14 @@ resource "google_service_account" "test" {
 resource "google_project_iam_member" "iam" {
     for_each = toset([
         "roles/logging.logWriter",
+        "roles/errorreporting.writer",
         "roles/monitoring.metricWriter",
         "roles/cloudtrace.agent",
-        "roles/servicemanagement.serviceController",
+        "roles/servicemanagement.serviceController", // for envoy
+        "roles/compute.viewer", // for p2p discovery
     ])
     role    = each.value
     member  = "serviceAccount:${google_service_account.test.email}"
-}
-
-data "google_container_registry_image" "hello-app-v1" {
-    project = "google-samples"
-    name = "hello-app:1.0"
-}
-
-data "google_container_registry_image" "hello-app-v2" {
-    project = "google-samples"
-    name = "hello-app:2.0"
 }
 
 data "google_container_registry_image" "hello-grpc" {
@@ -98,7 +90,10 @@ module "external_hello_service" {
             container_image = data.google_container_registry_image.hello-grpc
             machine_type = "e2-small"
             preemptible = true
-            args = ["-port 8080"]
+            args = [
+                "-port 8080",
+                "-downstream ${module.internal_hello_service.service_name}:9500",
+            ]
             // env = {}
             service_account = google_service_account.test.email
             envoy_config = {
@@ -123,21 +118,32 @@ module "internal_hello_service" {
     group = module.test_group
     min_replicas = 1
     max_replicas = 2
-    http_health_check_path = "/"
-    http_health_check_port = 80
+    http_health_check_path = "/root"
+    http_health_check_port = 8081
     service_to_container_ports = {
-        "80" = "8080"
-        "9619" = "9619"
+        "8081" = "8081" // health check --> envoy (8081) --> service (9500)
+        "9500" = "9500"
     }
 
     versions = {
         "hello-v1" = {
-            container_image = data.google_container_registry_image.hello-app-v1
+            container_image = data.google_container_registry_image.hello-grpc
             machine_type = "e2-small"
             service_account = google_service_account.test.email
             preemptible = true
-            // args = []
+            args = [
+                "-port 9500",
+            ]
             // env = {}
+
+            // To give somewhere for health checks to point to (upstream connects to
+            // service directly).
+            envoy_config = {
+                service_name = google_endpoints_service.grpc_service.service_name
+                envoy_service_port = 8081
+                backend_protocol = "grpc"
+                backend_service_port = 9500
+            }
         }
     }
 }

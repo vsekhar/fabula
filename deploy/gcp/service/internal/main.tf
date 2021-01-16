@@ -7,11 +7,12 @@ module "service_common" {
     http_health_check_port = var.http_health_check_port
     min_replicas = var.min_replicas
     max_replicas = var.max_replicas
-    pubsub_autoscale = var.pubsub_autoscale
     service_to_container_ports = var.service_to_container_ports
 }
 
 resource "google_compute_region_backend_service" "be" {
+    for_each = length(var.service_to_container_ports) > 0 ? {0:""} : {}
+
     name = "svc-${var.group.name}-${var.name}"
     health_checks = [module.service_common.regional_health_check_id]
     load_balancing_scheme = "INTERNAL"
@@ -21,17 +22,20 @@ resource "google_compute_region_backend_service" "be" {
 }
 
 resource "google_compute_forwarding_rule" "forwarding_rule" {
+    for_each = length(var.service_to_container_ports) > 0 ? {0:""} : {}
+
     name = "svc-${var.group.name}-${var.name}"
     network = var.group.network
     subnetwork = var.group.subnetwork
-    backend_service = google_compute_region_backend_service.be.id
+    backend_service = google_compute_region_backend_service.be[0].id
     load_balancing_scheme = "INTERNAL"
     all_ports = true
-    service_label = "lb" // --> lb.svc-groupname-servicename.il4.region.lb.projectID.internal
+    // --> lb.svc-<groupname>-<servicename>.il4.<region>.lb.<projectID>.internal
+    service_label = "lb"
 }
 
 resource "google_compute_firewall" "allow-internal" {
-    for_each = length(var.service_to_container_ports) > 0 ? {0:""} : {} // dynamic resources need a key
+    for_each = length(var.service_to_container_ports) > 0 ? {0:""} : {}
 
     name = "svc-${var.group.name}-${var.name}-allow-internal"
     network = var.group.network
@@ -52,3 +56,13 @@ resource "google_compute_firewall" "allow-internal" {
         ports = [for k, v in var.service_to_container_ports : k]
     }
 }
+
+/*
+
+metadata.items.created-by="projects/523215995107/regions/us-central1/instanceGroupManagers/svc-test-internal"
+
+works:
+id="720558720759462875"
+name="svc-test-internal-96sv"
+
+*/

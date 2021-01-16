@@ -1,6 +1,6 @@
 # Fabula
 
-_Globally consistent verifiable private consensus at 1 million events per second._
+_Globally consistent verifiable private consensus at 1 billion events per second._
 
 > _Fabula (Russian: фабула, IPA: [ˈfabʊlə]) is the chronological order of the events contained in a story, the "raw material" of a story._ -[Wikipedia](https://en.wikipedia.org/wiki/Fabula_and_syuzhet)
 

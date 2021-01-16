@@ -11,8 +11,6 @@ package youtime
 
 import (
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -57,10 +55,29 @@ const startingRadius = 5 * time.Second
 // uncertainty.
 
 type statsT struct {
-	ideal      sample        // synthetic sample of an "ideal" clock
-	radius     time.Duration // radius around now in synthetic sample (TODO: stdev?)
-	skew       int64         // estimated skew from relNow to synthetic sample in ppb
-	skewRadius int64         // radius around skew (TODO: stdev?)
+	synthetic     sample        // synthetic sample of an "ideal" clock
+	radius        time.Duration // radius around now in synthetic sample (TODO: stdev?)
+	skewPPB       int64         // estimated skew from relNow to synthetic sample in ppb
+	skewPPBRadius int64         // radius around skew (TODO: stdev?)
+}
+
+// estimate returns a time range corresponding to rel, as estimated by the
+// parameters in s.
+func (s statsT) estimate(rel relMoment) (earliest, latest time.Time) {
+	return s.shiftAndSkew(s.synthetic.rel, s.synthetic.then, rel)
+}
+
+func (s statsT) shiftAndSkew(rel relMoment, t time.Time, dst relMoment) (earliest, latest time.Time) {
+	relInterval := rel.to(dst).Nanoseconds()
+
+	eSkew := relInterval * (s.skewPPB - s.skewPPBRadius) / 1e9
+	lSkew := relInterval * (s.skewPPB + s.skewPPBRadius) / 1e9
+
+	edelta := -s.radius + time.Duration(eSkew)
+	ldelta := s.radius + time.Duration(lSkew)
+
+	newT := t.Add(rel.to(dst))
+	return newT.Add(edelta), newT.Add(ldelta)
 }
 
 // Client is an instance of YouTime.
@@ -102,62 +119,6 @@ func (c *Client) storeStats(s *statsT) {
 	c.stats.Store(s)
 }
 
-func getSample(nc net.Conn) (sample, error) {
-	req := &packet{Settings: 0x1B}
-	rsp := &packet{}
-	s := relNow()
-	if err := binary.Write(nc, binary.BigEndian, req); err != nil {
-		return sample{}, err
-	}
-	if err := binary.Read(nc, binary.BigEndian, rsp); err != nil {
-		return sample{}, err
-	}
-	m := mid(s, relNow())
-	secs := float64(rsp.RxTimeSec) - ntpEpochOffset
-	nanos := (int64(rsp.RxTimeFrac) * 1e9) >> 32
-	t := time.Unix(int64(secs), nanos)
-	return sample{then: t, rel: m}, nil
-}
-
-var errCodedProbesNotPure = errors.New("coded probes not pure")
-
-// CodedProbeInterval is the time between coded probes.
-const CodedProbeInterval = 1 * time.Second
-const codedProbeEpsilon = 5 * time.Millisecond
-const maxServerError = 3 // consecutive errors
-const updateInterval = 2 * time.Second
-
-func getCodedSamples(nc net.Conn) (s1, s2 sample, err error) {
-	dl := time.Now().Add(ntpTimeout)
-	if err = nc.SetDeadline(dl); err != nil {
-		return
-	}
-	s1, err = getSample(nc)
-	if err != nil {
-		return
-	}
-	time.Sleep(CodedProbeInterval)
-	dl = time.Now().Add(ntpTimeout)
-	if err = nc.SetDeadline(dl); err != nil {
-		return
-	}
-	s2, err = getSample(nc)
-	if err != nil {
-		return
-	}
-	if s1.then.After(s2.then) {
-		return sample{}, sample{}, errCodedProbesNotPure
-	}
-	jitter := s2.then.Sub(s1.then) - s2.rel.sub(s1.rel)
-	if jitter < 0 {
-		jitter = -jitter
-	}
-	if jitter >= codedProbeEpsilon {
-		return sample{}, sample{}, errCodedProbesNotPure
-	}
-	return s1, s2, nil
-}
-
 func (c *Client) fetchSamples(ctx context.Context) error {
 	eg, _ := errgroup.WithContext(ctx)
 	// fetch a set of samples for each server (adding it if it doesn't exist)
@@ -176,10 +137,8 @@ func (c *Client) fetchSamples(ctx context.Context) error {
 		}
 
 		eg.Go(func() error {
-			var err error
 			for {
-				var s1, s2 sample
-				s1, s2, err = getCodedSamples(srv.conn)
+				outProbes, inProbes, err := GetCodedProbes(srv.conn)
 				if err != nil {
 					log.Print(err)
 					srv.err = err
@@ -191,8 +150,8 @@ func (c *Client) fetchSamples(ctx context.Context) error {
 				}
 				srv.err = nil
 				srv.errN = 0
-				srv.samples.AddAndShift(s1, maxSamples)
-				srv.samples.AddAndShift(s2, maxSamples)
+				srv.samples.addAndShift(probesToSample(outProbes[0], inProbes[0]), maxSamples)
+				srv.samples.addAndShift(probesToSample(outProbes[1], inProbes[1]), maxSamples)
 				break
 			}
 			return nil
@@ -212,7 +171,7 @@ func (c *Client) update(ctx context.Context) error {
 	// skew radius. Use skew to compute ideal sample and radius.
 	// Create a new statsT
 
-	fakeStats := &statsT{ideal: sample{rel: relNow(), then: time.Now()}}
+	fakeStats := &statsT{synthetic: sample{rel: relNow(), then: time.Now()}}
 	c.stats.Store(fakeStats)
 	c.readyOnce.Do(func() {
 		close(c.readyCh)
@@ -236,16 +195,7 @@ func (c *Client) getRange() (earliest, latest time.Time) {
 	if s == nil {
 		panic("called Get before calling Start")
 	}
-	rnow := relNow()
-	mid := s.ideal.then.Add(s.ideal.rel.to(rnow))
-
-	lowSkew := (s.ideal.rel.to(rnow).Nanoseconds() / 1e9) * (s.skew - s.skewRadius)
-	edelta := -s.radius + time.Duration(lowSkew)
-
-	highSkew := (s.ideal.rel.to(rnow).Nanoseconds() / 1e9) * (s.skew + s.skewRadius)
-	ldelta := s.radius + time.Duration(highSkew)
-
-	return mid.Add(edelta), mid.Add(ldelta)
+	return s.estimate(relNow())
 }
 
 // YouTime represents a range of time within which the current time lies.

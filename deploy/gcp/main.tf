@@ -4,13 +4,13 @@ module "regions" {
 }
 
 provider "google" {
-    version = "~> 3.51.0"
     project = var.project_id
+    region = module.regions.gce_region
 }
 
 provider "google-beta" {
-    version = "~> 3.51.0"
     project = var.project_id
+    region = module.regions.gce_region
 }
 
 resource "google_project_service" "service" {

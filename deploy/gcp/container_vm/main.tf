@@ -16,6 +16,7 @@ module "template_id" {
         // to these values will be shown elsewhere in the diff).
         name = var.name
         tags = base64sha512(join(" ", var.tags))
+        container-vm = data.google_compute_image.cos.name
         container_image = base64sha512(jsonencode(var.container_image))
         machine_type = var.machine_type
         host_to_container_ports = base64sha512(jsonencode(var.host_to_container_ports))
@@ -28,6 +29,7 @@ module "template_id" {
         preemptible = var.preemptible
         service_account = var.service_account
         templatefile = filebase64sha512("${path.module}/gce_cloud-init.tmpl.yaml")
+        container-vm = data.google_compute_image.cos.name
     }
 }
 

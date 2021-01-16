@@ -5,6 +5,80 @@ option go_package = "github.com/vsekhar/fabula/pkg/api/storagepb";
 
 import "google/protobuf/timestamp.proto";
 
-message EntryStorage {
-    google.protobuf.Timestamp timestamp = 1;
+import "ref.proto";
+
+// File name: fabula-batch-<base64urlsafe(batch_sha3512)>.pb
+message Batch {
+    repeated BatchRef batches = 1;
+    repeated Entry entries = 2;
 }
+
+// File name: fabula-seq-<shorthash(seq_no)>-<sortablebase64(seq_no)>.pb
+//   - File names must be deterministic for transactional writing to occur
+//   - File names must not be sequential to prevent storage server hotspots
+//     during frequent contention
+//   - Garbage collected after some policy-determined retention period
+//       - Users can evergreen inclusion proofs and consistency proofs and store
+//         sequences themselves as a kind of subset mirror of the full chain.
+//
+// Index filename: fabula-index-<base64urlsafe(sequence_sha3512)>-<sortablebase64(seq_no).idx
+//   - Index files are not a source of truth.
+//   - Application should tolerate missing index files
+message SequenceEntry {
+    BatchRef root_batch = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    SequenceRef prior = 3; // hash chain
+}
+
+// File name: fabula-batch-pack-<base64urlsafe(packed_batch_sha3512)>.pack
+//
+// NB: this file is not a straight protobuf because protos can't be easily
+// created incrementally.
+//
+// Write as a depth-first traversal starting from packed_batch:
+//
+//  1) walk down batches to bottom batch (batch with only entries).
+//  2) write that Batch and its siblings in order
+//  3) write parent Batch, verifying hashes of children
+//  4) recurse upward
+//  5) write packed Batch
+//
+// Packs can be internally verified:
+//
+//  1) if EOF, stop, verify queue has 1 entry, and that entry hashes to
+//     hash in filename.
+//  2) read Batch
+//  3) if last_batch_hash (if any) in batch.batches:
+//    a) confirm batch.batches matches queue, if so reset queue, if not, fail.
+//  4) hash batch and enqueue it
+//  5) goto 1
+//
+// Alternatives considered:
+//
+// - Repack batches with just entries and instructions to recreate tree layout:
+//   - branching factor of batch tree might be very high (30-100)
+//   - omitting Batch hashes would save a small factor on size
+//   - verification would become an all-or-nothing ordeal, with no ability to
+//     localize any errors
+
+// File name: fabula-seq-pack-<sortablebase64(last+1)>-<sortablebase64(first)>.pack
+//
+// NB: putting the end seq_no first in the file name enables looking up sequence
+// entries among packs via the list StartOffset parameter. The first pack with
+// and end seq_no >= the queried seq_no will be returned first in the list. The
+// rest of the filename can then be checked to see if the pack contains the
+// desired sequence number.
+//
+// This pack concatenates all batches and entries for sequence entries in the
+// half-open range specified in the filename [first, last+1).
+//
+// For each sequence entry in the pack, two protos are written:
+//
+//   1) For each sequence entry in the pack:
+//     a) SequenceEntry
+//     b) the contents of fabula-batch<base64urlsafe(sequence_entry.root)>.pack
+//   2) SequencePackIndex
+//   3) LittleEndian.PutUint64(buf, byte_offset(SequencePackIndex))
+//
+
+// TODO: use GCS composable objects to prevent re-writing.

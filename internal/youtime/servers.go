@@ -20,18 +20,23 @@ const maxSamples = 25
 const minSamples = 5
 
 var ntpServers = []string{
-	// Stratum 1
-	"time.google.com:123",
-	"time.nist.gov:123",
-	"time.facebook.com:123",
-	"time.apple.com:123",
+	// Cloud providers
+	"time.google.com:123",   // stratum 1, don't need all four: https://developers.google.com/time/faq#allfour
+	"time.facebook.com:123", // stratum 1
+	"time.apple.com:123",    // stratum 1
+	// "time.cloudflare.com:123", // stratum 3
+	// "time.windows.com:123",    // stratum 3
 
-	// Stratum 3
-	// "time.cloudflare.com:123",
-	// "time.windows.com:123",
+	// Governments
+	"time.nist.gov:123", // stratum 1
+	"time.nrc.ca:123",   // stratum 2
 
-	// Variable stratum
-	// "pool.ntp.org:123",
+	// Infrastructure providers
+	// "ntp.se:123", // stratum 1, operator of multiple IX's across Sweden
+	// "ntp.torix.ca:123", // stratum 1, operator of IX in Toronto, Canada
+	// "time.mbix.ca", // stratum ?, operator of IX in Manitoba, Canada
+
+	// "pool.ntp.org:123", // different server every time, noisy?
 }
 
 type server struct {

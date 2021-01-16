@@ -1,0 +1,47 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/internal/api/batcher";
+
+import "google/protobuf/descriptor.proto";
+
+import "ref.proto";
+import "service.proto";
+
+extend google.protobuf.FieldOptions {
+    optional string root = 48197;
+}
+
+message InternalBatchRequest {
+    Entry entry = 1;
+
+    // prefix denotes the hex prefix of entry.notarization_sha3512 that was used
+    // to identify the server to which the BatchRequest is being sent.
+    //
+    // Root is represented by *, which is not included in any binary encoding
+    // scheme. We avoid using the empty string "" as an error producing an empty
+    // prefix could result in requests flooding the root batcher.
+    string prefix = 2 [(root) = "*"];
+
+    // num_entries > 0 is the number of entries represented by this batch
+    // request. For leaf batch requests (created by public notarization
+    // requests), this should be 1. Higher-level batch requests will sum this
+    // value.
+    uint64 num_entries = 3;
+}
+
+message InternalBatchResponse {
+    NotarizeResponse response = 1;
+}
+
+service InternalBatcher {
+    // Add the current request to a batch and propagate upward (towards the
+    // root prefix).
+    //
+    // Returns "Resource Exhausted" if the current batcher is busy. Clients
+    // should extend BatchRequest.prefix by 1 byte (2 hex characters), lookup a
+    // new batcher and try again.
+    //
+    // Separately, clients monitor broadcast messagse
+    rpc InternalBatch(InternalBatchRequest) returns (InternalBatchResponse) {}
+}

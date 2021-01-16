@@ -1,0 +1,105 @@
+syntax = "proto3";
+package fabula;
+
+option go_package = "github.com/vsekhar/fabula/pkg/api/servicepb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/descriptor.proto";
+import "google/api/annotations.proto";
+
+import "ref.proto";
+import "region.proto";
+
+// For a given entry, a Sequencing represents that entry's location in the top
+// level sequence and down through the tree of packs.
+message Sequencing {
+    uint64 seq_no = 1;
+    SequenceRef sequence_entry = 2;
+    google.protobuf.Timestamp timestamp = 3;
+
+    // For a given entry, batches are listed in top-down order linking the
+    // notarization entry to its sequence entry.
+    //
+    // For priors, batches is empty.
+    repeated BatchRef batches = 4;
+}
+
+message NotarizeRequest {
+    Region region = 1;
+    bytes document = 2; // must be 64 bytes
+}
+
+message NotarizeResponse {
+    Sequencing prior = 1;        // contains prior.timestamp
+    Entry entry = 2;             // contains notarization_sha3512
+    Sequencing sequencing = 3;   // contains current entry timestamp
+
+    // Client can locally verify the following:
+    //
+    //   * entry.notarization_sha3512 == hash(prior.sequence_entry.sequence_sha3512, document)
+    //   * sequencing.timestamp - prior.timestamp is a reasonable interval
+    //
+    // By inspecting batches contained in sequencing.batches, client can verify:
+    //
+    //   * entry is in sequencing.batches[len(batches)-1], and upwards to the
+    //     sequencing_entry
+    //
+    // By inspecting sequence entries and computing peaks, client can verify:
+    //
+    //   * sequence_entry is in digest(n), and digest(n) is in digest(p > n)
+
+}
+
+// TODO: batch requests
+// TODO: sequence entry requests (servers cache based on SequenceBroadcast
+// messages to alleviate last entry hotspot.
+// NB: with the above, clients can prove things themselves
+
+message BatchRequest {
+    BatchRef batch = 1;
+}
+
+message BatchResponse {
+    repeated BatchRef batches = 1;
+    repeated Entry entries = 2;
+}
+
+message SequenceRequest {
+    uint64 seq_no = 1;
+}
+
+message SequenceResponse {
+    BatchRef root = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    SequenceRef prior = 3;
+}
+
+message RootRequest {}
+message RootResponse {
+    string message = 1;
+}
+
+service Fabula {
+    rpc Root(RootRequest) returns (RootResponse) {
+        option (google.api.http) = {
+            // NB: Envoy fails to register the actual root "/"
+            get: "/root"
+        };
+    }
+    rpc Notarize(NotarizeRequest) returns (NotarizeResponse) {
+        option (google.api.http) = {
+            post: "/v1/{region=regions/*}/notarizations/{document}"
+            body: "*"
+        };
+    }
+    rpc Batch(BatchRequest) returns (BatchResponse) {
+        option (google.api.http) = {
+            get: "/v1/{batch.batch_sha3512=batches/*}"
+        };
+    }
+    rpc Sequence(SequenceRequest) returns (SequenceResponse) {
+        option (google.api.http) = {
+            get: "/v1/{seq_no=sequence/*}"
+        };
+    }
+}

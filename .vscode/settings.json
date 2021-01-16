@@ -14,11 +14,17 @@
     "[go]": {
         "editor.rulers": [80],
     },
+    "[proto3]": {
+        "editor.rulers": [80],
+    },
     "protoc": {
         "path": "/usr/bin/protoc",
         "compile_on_save": true,
         "options": [
-            "--proto_path=api",
+            "--proto_path=${workspaceRoot}/api",
+            "--proto_path=${workspaceRoot}/internal/api",
+            "--proto_path=${workspaceRoot}/deploy/gcp/service/test",
+            "--proto_path=${workspaceRoot}/third_party",
             "--go_out=.",
             "--go_opt=module=github.com/vsekhar/fabula",
             "--go-grpc_out=.",

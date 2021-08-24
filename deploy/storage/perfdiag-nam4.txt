@@ -1,0 +1,125 @@
+$ gsutil perfdiag -n 100 -c 10 -s 128 -t lat,list gs://fabula-nam
+==============================================================================
+                              DIAGNOSTIC RESULTS
+==============================================================================
+
+------------------------------------------------------------------------------
+                                   Latency
+------------------------------------------------------------------------------
+Operation       Size  Trials  Mean (ms)  Std Dev (ms)  Median (ms)  90th % (ms)
+=========  =========  ======  =========  ============  ===========  ===========
+   Delete        0 B     100      252.6          17.3        249.7        267.6
+   Delete      1 KiB     100      250.9          11.4        249.7        265.9
+   Delete    100 KiB     100      254.3          34.4        250.9        265.6
+   Delete      1 MiB     100      249.9          11.2        249.3        263.3
+ Download        0 B     100      156.9          19.7        150.5        182.9
+ Download      1 KiB     100      207.6          24.1        204.4        235.3
+ Download    100 KiB     100      315.0          40.8        319.2        369.8
+ Download      1 MiB     100      466.4          70.5        497.8        535.3
+ Metadata        0 B     100       74.2          18.3         71.6         80.8
+ Metadata      1 KiB     100       71.6           5.6         71.4         78.9
+ Metadata    100 KiB     100       71.3           5.2         71.3         77.5
+ Metadata      1 MiB     100       72.9           9.9         71.2         80.4
+   Upload        0 B     100      296.6          57.3        273.5        378.3
+   Upload      1 KiB     100      332.2          72.4        314.5        422.5
+   Upload    100 KiB     100      368.2          56.1        344.1        445.1
+   Upload      1 MiB     100      989.9          84.4        958.4       1084.9
+
+------------------------------------------------------------------------------
+                                   Listing
+------------------------------------------------------------------------------
+After inserting 100 objects:
+  Total time for objects to appear: 0.1 seconds
+  Number of listing calls made: 1
+  Individual listing call latencies: [0.099s]
+  Files reflected after each call: [100]
+After deleting 100 objects:
+  Total time for objects to appear: 0.073 seconds
+  Number of listing calls made: 1
+  Individual listing call latencies: [0.073s]
+  Files reflected after each call: [0]
+
+------------------------------------------------------------------------------
+                              System Information
+------------------------------------------------------------------------------
+IP Address:
+  127.0.1.1
+Temporary Directory:
+  /tmp
+Bucket URI:
+  gs://fabula-nam/
+gsutil Version:
+  4.54
+boto Version:
+  2.49.0
+Measurement time:
+ 2020-10-30 03:23:50 AM
+Running on GCE:
+  False
+Bucket location:
+  NAM4
+Bucket storage class:
+  STANDARD
+Google Server:
+  ns1
+Google Server IP Addresses:
+  172.217.1.16
+  172.217.0.240
+  172.217.165.16
+  172.217.164.240
+  172.217.164.208
+Google Server Hostnames:
+  iad23s25-in-f16.1e100.net
+  dfw06s38-in-f16.1e100.net
+  yyz12s06-in-f16.1e100.net
+  yyz12s05-in-f16.1e100.net
+  yyz12s04-in-f16.1e100.net
+Google DNS thinks your IP is:
+  None
+CPU Count:
+  12
+CPU Load Average:
+  [1.44, 1.32, 1.09]
+Total Memory:
+  61.01 GiB
+Free Memory:
+  45.31 GiB
+TCP segments sent during test:
+  113451
+TCP segments received during test:
+  79550
+TCP segments retransmit during test:
+  2421
+Disk Counter Deltas:
+    disk    reads   writes   rbytes   wbytes    rtime    wtime
+   dm-0        0    19071        0 143331328        0    26244
+   dm-1        0    19068        0 145367040        0    26272
+   dm-2        0        0        0        0        0        0
+ nvme0n1        0    14373        0 143331328        0     8691
+ nvme0n1p1        0        0        0        0        0        0
+ nvme0n1p2        0        0        0        0        0        0
+ nvme0n1p3        0    13494        0 143331328        0     7295
+TCP /proc values:
+    rmem_default = 212992
+   rmem_max = 4194304
+   wmem_default = 212992
+   wmem_max = 4194304
+   tcp_timestamps = 1
+   tcp_sack = 1
+   tcp_window_scaling = 1
+Boto HTTPS Enabled:
+  True
+Requests routed through proxy:
+  False
+Latency of the DNS lookup for Google Storage server (ms):
+  0.6
+Latencies connecting to Google Storage server IPs (ms):
+  172.217.164.208 = 14.8
+
+------------------------------------------------------------------------------
+                          In-Process HTTP Statistics
+------------------------------------------------------------------------------
+Total HTTP requests made: 1802
+HTTP 5xx errors: 0
+HTTP connections broken: 0
+Availability: 100%

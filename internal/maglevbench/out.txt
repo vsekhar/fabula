@@ -1,0 +1,36 @@
+$ go test -bench=. > out.txt
+goos: linux
+goarch: amd64
+pkg: github.com/vsekhar/fabula/internal/maglevbench
+BenchmarkConsistenHashByServerCount/1_servers-12         	     427	   2804356 ns/op
+BenchmarkConsistenHashByServerCount/10_servers-12        	     213	   5573731 ns/op
+BenchmarkConsistenHashByServerCount/100_servers-12       	      38	  30890256 ns/op
+BenchmarkConsistenHashByServerCount/1000_servers-12      	       4	 288975527 ns/op
+BenchmarkConsistenHashByServerCount/10000_servers-12     	       1	2185030251 ns/op
+BenchmarkConsistentHashLookup/1_servers-12               	 6520455	       180 ns/op
+BenchmarkConsistentHashLookup/10_servers-12              	 5946836	       182 ns/op
+BenchmarkConsistentHashLookup/100_servers-12             	 6587458	       179 ns/op
+BenchmarkConsistentHashLookup/1000_servers-12            	 6658221	       191 ns/op
+BenchmarkConsistentHashLookup/10000_servers-12           	 6735537	       200 ns/op
+BenchmarkMaglevByServerCount/BigM/1_servers-12           	     100	  10046794 ns/op
+BenchmarkMaglevByServerCount/BigM/10_servers-12          	      37	  35520473 ns/op
+BenchmarkMaglevByServerCount/BigM/100_servers-12         	      21	  58511947 ns/op
+BenchmarkMaglevByServerCount/BigM/1000_servers-12        	      20	  57732314 ns/op
+BenchmarkMaglevByServerCount/BigM/10000_servers-12       	      21	  55934684 ns/op
+BenchmarkMaglevByServerCount/SmallM/1_servers-12         	    3858	    316814 ns/op
+BenchmarkMaglevByServerCount/SmallM/10_servers-12        	     460	   2287823 ns/op
+BenchmarkMaglevByServerCount/SmallM/100_servers-12       	     391	   2755794 ns/op
+BenchmarkMaglevByServerCount/SmallM/1000_servers-12      	     355	   3443581 ns/op
+BenchmarkMaglevByServerCount/SmallM/10000_servers-12     	     307	   3849891 ns/op
+BenchmarkMaglevLookup/BigM/1_servers-12                  	91733083	        12.8 ns/op
+BenchmarkMaglevLookup/BigM/10_servers-12                 	93752079	        12.9 ns/op
+BenchmarkMaglevLookup/BigM/100_servers-12                	94019548	        12.8 ns/op
+BenchmarkMaglevLookup/BigM/1000_servers-12               	95536365	        12.9 ns/op
+BenchmarkMaglevLookup/BigM/10000_servers-12              	93941376	        12.9 ns/op
+BenchmarkMaglevLookup/SmallM/1_servers-12                	94513380	        12.9 ns/op
+BenchmarkMaglevLookup/SmallM/10_servers-12               	85065315	        13.3 ns/op
+BenchmarkMaglevLookup/SmallM/100_servers-12              	94924887	        13.3 ns/op
+BenchmarkMaglevLookup/SmallM/1000_servers-12             	94982012	        12.6 ns/op
+BenchmarkMaglevLookup/SmallM/10000_servers-12            	92737852	        13.1 ns/op
+PASS
+ok  	github.com/vsekhar/fabula/internal/maglevbench	110.138s

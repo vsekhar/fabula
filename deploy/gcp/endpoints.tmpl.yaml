@@ -1,0 +1,13 @@
+type: google.api.Service
+config_version: 3
+
+name: fabula.endpoints.${project_id}.cloud.goog
+
+title: Fabula gRPC API
+apis:
+- name: fabula.Fabula
+
+usage:
+  rules:
+  - selector: "*"
+    allow_unregistered_calls: true

@@ -1,6 +1,11 @@
 data "google_compute_image" "cos" {
-    family = "cos-stable"
     project = "cos-cloud"
+
+    // Temporarily upgraded to cos-beta to get logging fix:
+    //   https://issuetracker.google.com/issues/137517429#comment2
+    // TODO: Return to cos-stable once COS89 hits stable.
+    //   https://cloud.google.com/container-optimized-os/docs/release-notes
+    family = "cos-beta"
 }
 
 module "template_id" {

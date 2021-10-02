@@ -1,5 +1,38 @@
 ## Pending
 
+* Each batch tree is a sparse Merkle Tree
+  * Capable of producing proof of inclusiong and _proof of non-exclusion_
+  * This is needed to support cancellation (below)
+  * Clients submit a doc, server returns notarization = hash(doc, server_salt), server_salt
+  * Client can cancel notarization by submitting doc, server_salt
+    * Server backs out notarization = hash(doc, server_salt)
+    * Server verifies that notarization exists (checks last XXs worth of cache)
+    * Server fails if notarization not found
+    * Server logs
+  * Clients cancel notarization
+  * Clients cancel the transaction by logging the notarization and salt to produce a cancellation
+  *
+
+* Building a sparse merkle tree at scale
+  * Have many candidate subtrees in flight
+  * Servers submit entry to batchers at a given prefix
+    * Longer prefixes when busy, shorter prefixes when not
+  * Batchers gather prefixes and write a subtree that "claims" the range denoted
+    by the prefix
+  * Conflict: batcher receives two requests containing subtrees for prefix 'aa'
+    * Each request "claims" the open interval [aa*,ab*)
+    * Drop the smallest one (the one with the fewest entries)
+      * The dropped requester tries again later with same batcher OR drops one
+        prefix down
+    * Write subtree with prefix to pubsub, submit upwards
+    * Lazily write to GCS
+  * Top level batch is submitted for sequencing
+  * Sequencing uses atomic write of GCS
+  * Startup:
+    * All requests go to "" (empty) prefix, claiming the whole tree
+    * First request succeeds, other requests conflict and fail
+    * Other requests drop down a prefix to [0-f] and try again
+
 * Supporting cancellation
   * Inspired by Revocation Transparency: https://github.com/google/trillian/blob/master/docs/papers/RevocationTransparency.pdf
     * Maintain a separate Sparse Merkle Tree to track revocations
@@ -39,6 +72,10 @@
     * Entries with active Bloom filters are fully logged and provable, but are
       in an unknown revocation state
       * This might not matter for some applications, they just want the log.
+  * Bloom filters are built by batchers, a bloom filter is written for each
+    sequence entry corresponding to all entries in the batch tree below.
+  * Could also use a Sparse Merkle Tree (SMT)
+    * Need a write-optimized SMT
 
 * Combine contexts in batcher and sequencer
   * Keep trying until all contexts timeout, or some server-set maximum timeout
@@ -160,6 +197,8 @@
   * push and pop commands navigate up and down tree
   * arguments are drawn from a Sequencing consisting of a path down the batch
     tree
+  * See also: [authentication octopus algorithm](https://eprint.iacr.org/2017/933.pdf)
+    * Linked from [Quadrable README#strands](https://github.com/hoytech/quadrable#strands)
 
 * Proofs can be evergreened by requesting consistency-proof after consistency-
   proof

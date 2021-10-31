@@ -16,6 +16,21 @@ var cases = map[string]uint64{
 	"Ezzzzzzzzzz": 1<<64 - 1,
 }
 
+func TestAlphabet(t *testing.T) {
+	alphamap := make(map[rune]struct{})
+	for i, c := range sortablebase64.Alphabet {
+		if i > 0 {
+			if sortablebase64.Alphabet[i-1] >= sortablebase64.Alphabet[i] {
+				t.Errorf("bad alphabet order: %c < %c", sortablebase64.Alphabet[i], sortablebase64.Alphabet[i-1])
+			}
+		}
+		alphamap[c] = struct{}{}
+	}
+	if len(alphamap) != 64 {
+		t.Error("bad alphabet, must be 64 non-duplicated chars")
+	}
+}
+
 func TestCases(t *testing.T) {
 	for s, n := range cases {
 		if ns := sortablebase64.EncodeUint64(n); ns != s {
@@ -29,7 +44,7 @@ func TestCases(t *testing.T) {
 
 func TestSequence(t *testing.T) {
 	for i := 0; i < 63; i++ {
-		var n uint64 = 1 << i
+		var n uint64 = (1 << i) + 42
 		ns := sortablebase64.EncodeUint64(n)
 		sn, err := sortablebase64.DecodeUint64(ns)
 		if sn != n || err != nil {

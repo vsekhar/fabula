@@ -1,7 +1,6 @@
 // Package sortablebase64 contains routines for encoding text in a variant of
 // base64. This variant has the useful property that encodings of numeric
-// values retain their ordering under lexicographic (ASCII) sort as the values
-// do under numeric sort.
+// values retain their ordering under lexicographic (ASCII) sort.
 package sortablebase64
 
 import (
@@ -15,22 +14,22 @@ import (
 // The order is drawn from the placement of these characters in the ASCII table.
 const Alphabet = "0123456789=ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 
+// Alternatives considered
+//
+// There are only 62 alphanumeric characters in ASCII, which would lose mapping
+// to byte place order and requires complex parsing.
+//
+// Two punctuation characters are thus required. We want the first character in
+// the alphabet to be '0', so that excludes all punctuation that sort ahead of
+// '0' (" !~#$%&'()*+,-./"). Of the remaining characters, we rule out those used
+// as field separators or invalid characters in URLs (":?@\^`"), or are matched
+// pairs ("<>[]"). That leaves '=' and '_'. Of these '=' is most problematic but
+// is at least left unparsed by most URL handlers when it appears in the query
+// section.
+
 var decodeMap [256]byte
 
 func init() {
-	alphamap := make(map[rune]struct{})
-	for i, c := range Alphabet {
-		if i > 0 {
-			if Alphabet[i-1] >= Alphabet[i] {
-				panic(fmt.Sprintf("bad alphabet order: %c < %c", Alphabet[i], Alphabet[i-1]))
-			}
-		}
-		alphamap[c] = struct{}{}
-	}
-	if len(alphamap) != 64 {
-		panic("bad alphabet, must be 64 non-duplicated chars")
-	}
-
 	for i := 0; i < len(decodeMap); i++ {
 		decodeMap[i] = 0xFF
 	}

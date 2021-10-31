@@ -33,8 +33,9 @@ type Batcher struct {
 	itemSliceZero reflect.Value // nil (zero value) for slice of items
 
 	// slots for handler invocations
-	tokenBucket  chan struct{} // buffered channel loaded with handlerLimit
-	maxBatchSize int
+	tokenBucket           chan struct{} // buffered channel loaded with handlerLimit
+	maxBatchSize          int
+	maxConcurrentHandlers int
 }
 
 // New creates a new Batcher.
@@ -48,11 +49,12 @@ type Batcher struct {
 // multiple times concurrently up to maxConcurrentHandlers.
 func New(itemExample interface{}, handler func(interface{}), maxBatchSize int, maxConcurrentHandlers int) *Batcher {
 	b := &Batcher{
-		ch:            make(chan interface{}),
-		handler:       handler,
-		itemSliceZero: reflect.Zero(reflect.SliceOf(reflect.TypeOf(itemExample))),
-		tokenBucket:   make(chan struct{}, maxConcurrentHandlers),
-		maxBatchSize:  maxBatchSize,
+		ch:                    make(chan interface{}),
+		handler:               handler,
+		itemSliceZero:         reflect.Zero(reflect.SliceOf(reflect.TypeOf(itemExample))),
+		tokenBucket:           make(chan struct{}, maxConcurrentHandlers),
+		maxBatchSize:          maxBatchSize,
+		maxConcurrentHandlers: maxConcurrentHandlers,
 	}
 	for i := 0; i < maxConcurrentHandlers; i++ {
 		b.tokenBucket <- struct{}{}
@@ -64,31 +66,22 @@ func New(itemExample interface{}, handler func(interface{}), maxBatchSize int, m
 // handleBatch breates a batch and handles it. It also starts the next instance
 // if handleBatch.
 func (b *Batcher) handleBatch() {
-	<-b.tokenBucket
-	defer func() {
-		b.tokenBucket <- struct{}{}
-	}()
-
 	batch := b.itemSliceZero
+	batch = reflect.Append(batch, reflect.ValueOf(<-b.ch)) // min 1 in batch
 loop:
 	for {
-		// collect until we have something AND (there's nothing waiting OR
-		// our batch is full)
-		if batch.Len() < b.maxBatchSize {
-			select {
-			case v := <-b.ch:
-				batch = reflect.Append(batch, reflect.ValueOf(v))
-			default:
-				if batch.Len() > 0 {
-					break loop
-				}
-				// block until we get something then try again
-				v := <-b.ch
-				batch = reflect.Append(batch, reflect.ValueOf(v))
-			}
+		if batch.Len() >= b.maxBatchSize {
+			<-b.tokenBucket
+			break
+		}
+		select {
+		case v := <-b.ch:
+			batch = reflect.Append(batch, reflect.ValueOf(v))
+		case <-b.tokenBucket:
+			break loop
 		}
 	}
-
+	defer func() { b.tokenBucket <- struct{}{} }()
 	go b.handleBatch()
 	b.handler(batch.Interface())
 }
@@ -104,4 +97,13 @@ func (b *Batcher) Add(ctx context.Context, item interface{}) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (b *Batcher) Close() error {
+	// Drain token bucket. This waits for all handlers to end and prevents new
+	// handlers from starting.
+	for i := 0; i < b.maxConcurrentHandlers; i++ {
+		<-b.tokenBucket
+	}
+	return nil
 }

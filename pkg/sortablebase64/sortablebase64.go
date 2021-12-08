@@ -38,12 +38,16 @@ func init() {
 	}
 }
 
+// StringLen is the length of all valid sortablebase64 string encodings.
+const StringLen = 11
+
 // EncodeUint64 returns a string representing n in sortablebase64.
 //
-// The returned string is always 11 bytes in length.
+// The returned string is always StringLen bytes in length.
 func EncodeUint64(n uint64) string {
 	rb := strings.Builder{}
-	for i := 0; i < 11; i++ {
+	rb.Grow(StringLen)
+	for i := 0; i < StringLen; i++ {
 		rb.WriteByte(Alphabet[n>>(60-(i*6))&0x3F])
 	}
 	return rb.String()
@@ -51,13 +55,15 @@ func EncodeUint64(n uint64) string {
 
 // DecodeUint64 returns a uint64 representing the sortablebase64-encoded string
 // s, or an error.
+//
+// The provided string must be StringLen bytes in length.
 func DecodeUint64(s string) (uint64, error) {
-	if len(s) != 11 {
-		return 0, fmt.Errorf("sortablebase64: expected string of length 11, got string of length %d", len(s))
+	if len(s) != StringLen {
+		return 0, fmt.Errorf("sortablebase64: expected string of length %d, got string of length %d", StringLen, len(s))
 	}
 	b := []byte(s)
 	var u uint64
-	for i := 0; i < 11; i++ {
+	for i := 0; i < StringLen; i++ {
 		v := uint64(decodeMap[b[i]])
 		if v == 0xFF {
 			return 0, fmt.Errorf("illegal character at pos %d in '%s'", i, s)
@@ -68,6 +74,8 @@ func DecodeUint64(s string) (uint64, error) {
 }
 
 // IncUint64 increments the sortablebase64-encoded uint64 s.
+//
+// The provided string must be StringLen bytes in length.
 func IncUint64(s string) (string, error) {
 	u, err := DecodeUint64(s)
 	if err != nil {
@@ -77,6 +85,8 @@ func IncUint64(s string) (string, error) {
 }
 
 // DecUint64 increments the sortablebase64-encoded uint64 s.
+//
+// The provided string must be StringLen bytes in length.
 func DecUint64(s string) (string, error) {
 	u, err := DecodeUint64(s)
 	if err != nil {

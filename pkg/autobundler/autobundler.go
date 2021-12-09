@@ -16,7 +16,9 @@ import (
 	"sync"
 )
 
-// AutoBundler manages
+// AutoBundler bundles values.
+//
+// The methods of AutoBundler are safe to call from multiple goroutines.
 type AutoBundler struct {
 	max     int
 	valueCh reflect.Value // chan T
@@ -95,7 +97,7 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 				// val = <-valueCh
 				buf = reflect.Append(buf, val)
 			default:
-				panic("select error")
+				panic("autobundler.New: select error")
 			}
 
 			if buf.Len() > 0 && !handlerRunning {
@@ -115,16 +117,26 @@ func New(ctx context.Context, itemExample interface{}, handler func(ctx context.
 	return r
 }
 
-// Add adds item to the current bundler.
+// Add adds item to the current bundler, or returns an error.
 //
 // It is safe to call Add from multiple goroutines.
-func (a *AutoBundler) Add(ctx context.Context, item interface{}) {
+func (a *AutoBundler) Add(ctx context.Context, item interface{}) error {
 	cases := []reflect.SelectCase{
 		{Dir: reflect.SelectSend, Chan: a.valueCh, Send: reflect.ValueOf(item)},
 		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(a.ctx.Done())},
 		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ctx.Done())},
 	}
-	reflect.Select(cases)
+	chosen, _, _ := reflect.Select(cases)
+	switch chosen {
+	case 0:
+	case 1:
+		return a.ctx.Err()
+	case 2:
+		return ctx.Err()
+	default:
+		panic("autobundler.Add: select error")
+	}
+	return nil
 }
 
 // AddNoWait tries to add an item to the current bundler. If successful, it
@@ -143,7 +155,7 @@ func (a *AutoBundler) AddNoWait(item interface{}) bool {
 	case 1:
 		return false
 	default:
-		panic("select error")
+		panic("autobundler.AddNoWait: select error")
 	}
 }
 

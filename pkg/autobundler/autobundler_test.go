@@ -20,7 +20,13 @@ func sleep(ctx context.Context, d time.Duration) {
 func addValues(ctx context.Context, r int, a *AutoBundler) {
 	interval := time.Duration(float64(time.Second) / float64(r))
 	for i := 0; true; i++ {
-		a.Add(ctx, i)
+		err := a.Add(ctx, i)
+		if err == context.Canceled {
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
 		sleep(ctx, interval)
 	}
 }
